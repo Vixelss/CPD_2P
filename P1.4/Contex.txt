@@ -1,0 +1,952 @@
+CONTEXTO
+Proyecto universitario P1.4 de la materia Computacion Paralela, Distribuida
+y en la Nube (PDN). Titulo del enunciado: "P1.4 Computacion NPU Paralela",
+subtitulo "NPU procesamiento paralelo?".
+
+Lo que hace: COMPARA DOS CADENAS DE ADN y senala cada caracter distinto
+indicando su fila y su columna, sobre tres plataformas: CPU, GPU y NPU.
+
+ESTE ARCHIVO ESTA ESCRITO PARA QUE UN ASISTENTE DE CODIGO PUEDA RETOMAR EL
+PROYECTO SIN VOLVER A LEERLO ENTERO. Describe lo que hay, por que esta como
+esta, que trampas ya se pisaron y donde tocar si hay que cambiar algo
+deprisa. El archivo REPASO.md es la version para leer, no para trabajar.
+
+ESTADO: terminado y probado. 190 comprobaciones automaticas en verde
+(125 de motores, validacion, emparejamiento y cache; 65 de la ventana).
+Ademas recorrido completo de la ventana real (2026-09-25) con el par de
+200 MB y con los dos genomas por los dos caminos: ver "TERCERA REVISION".
+
+
+================================================================================
+LOS CUATRO PROYECTOS DE LA MATERIA
+================================================================================
+
+Son CUATRO PROGRAMAS SEPARADOS, no uno que va creciendo. Cada uno vive en su
+carpeta y se ejecuta por su cuenta. Si el profesor pide ver el conteo hay que
+abrir el P1.3; si pide la comparacion, el P1.4.
+
+  D:\Catolica\Semestre_8\CPD\
+    P1.1\   Cuenta A, C, G, T. CPU secuencial contra CPU paralela.
+            motor_adn.py, benchmark.py, app.py, crear_prueba.py
+            Los dos genomas de 3.3 GB vivian aqui; ahora estan en
+            P1.4\datos\ (ver DATOS DE ENTRADA).
+    P1.2\   Cuenta + detecta caracteres invalidos. CPU, GPU CUDA y OpenCL
+            (para medir la grafica integrada, que con CUDA es inalcanzable).
+            motor_cpu.py, motor_gpu.py, motor_opencl.py, ensuciar.py,
+            benchmark_gpu.py, verificar.py, informe.py, interfaz.py
+    P1.3\   Cuenta con CPU y GPU TRABAJANDO A LA VEZ sobre el mismo archivo,
+            con reparto dinamico por raciones adaptativas, mas censo por
+            multiprocesador de la tarjeta (registro PTX %smid).
+            motor_hibrido.py es el nucleo. evidencias.py arma la matriz 6x3.
+    P1.4\   ESTE. Compara dos cadenas en CPU, GPU y NPU.
+
+Lo que se hereda del P1.3 en el P1.4: la estructura de monitor.py, la idea de
+evidencias.py, el patron lanzador/ventana separados, y la regla de dejar la
+preparacion fuera del cronometro. El resto es nuevo.
+
+Lo que NO esta en el P1.4: conteo de bases, deteccion de caracteres
+invalidos, OpenCL, y el trabajo simultaneo de dos plataformas. Ninguna de
+esas cosas la pide el enunciado del P1.4.
+
+
+================================================================================
+MAQUINA Y ENTORNO
+================================================================================
+
+  CPU  Intel i5-13420H, 8 nucleos fisicos / 12 logicos.
+       OJO: son heterogeneos. Ocho nucleos de rendimiento (llegan al 88-99 %)
+       y cuatro de eficiencia (se quedan en 39-53 %). Se ve clarisimo en la
+       grafica "Uso de cada nucleo logico de CPU" y es buen material de
+       defensa.
+  GPU  NVIDIA GeForce RTX 4050 Laptop, 6140 MB VRAM, compute capability 8.9,
+       20 SMs, warp de 32.
+  NPU  NO HAY. El i5-13420H es Raptor Lake de 13a generacion; las NPU de
+       Intel empiezan en Core Ultra (Meteor Lake). Comprobado: no aparece
+       ningun dispositivo PnP de NPU y no existe el conjunto de contadores
+       "NPU Engine" en este Windows.
+  32 GB RAM, SSD NVMe (unidad D:), Windows 11, Python 3.13.3.
+  Pantalla 1920x1080 fisicos al 125 por ciento. La ventana se calcula contra
+  winfo_screenheight() y se limita a 900 px de alto.
+
+ENTORNO
+  numpy 2.3.5, numba + numba-cuda (heredado del P1.3), psutil 7.1.3,
+  nvidia-ml-py (expone pynvml), matplotlib 3.10.8, pillow.
+  onnxruntime 1.24.4 con DirectML: NO ESTA INSTALADO EN EL SISTEMA. Viaja
+  dentro del proyecto, en vendor\onnxruntime (68 MB). motor_npu.py lo mete en
+  sys.path antes de importarlo. Eso es lo que permite copiar la carpeta a
+  otra maquina y ejecutar sin instalar nada.
+
+
+================================================================================
+DATOS DE ENTRADA
+================================================================================
+
+El par real con el que se valida son los DOS genomas humanos, que estan en
+la carpeta datos\ de este proyecto (antes estaban en ..\P1.1\):
+
+  datos\GCA_000001405.29_GRCh38.p14_genomic.fna   3.340.225.228 bytes
+  datos\GCF_000001405.40_GRCh38.p14_genomic.fna   3.339.739.109 bytes
+
+Son la version GenBank (GCA) y la version RefSeq (GCF) del MISMO ensamblaje
+GRCh38.p14. Es un par de comparacion con sentido biologico real: la secuencia
+deberia ser casi identica y las cabeceras difieren (>CM000663.2 contra
+>NC_000001.11).
+
+RESULTADO MEDIDO, POR LOS DOS CAMINOS. Es material de informe y la
+comparacion entre ambos es justo lo que hay que contar:
+
+  DE CORRIDO, posicion contra posicion
+    Secuencia limpia: 3.298.912.062 y 3.298.430.636 bases (desfase +481.426).
+    Se comparan las 3.298.430.636 posiciones comunes.
+    Diferencias: 1.072.801.765.  Similitud: 67,4754 %.
+    Primera diferencia en la posicion 1.945.577.269.
+
+  EMPAREJANDO POR SECUENCIA (el modo por defecto de la aplicacion)
+    701 parejas de 709 registros, 99,99 % de las bases.
+    Diferencias: 0.  Similitud: 100 %.
+    CPU x12 6,046 s | GPU 64 MB 7,271 s | NPU 8 capas 21,337 s, las tres
+    con el mismo resultado y marcadas como validas.
+    Repetido en la ventana el 2026-09-25, con medicion justa:
+    CPU x12 2,493 s | GPU 1024 bloques 3,336 s | NPU 8 capas 13,756 s.
+
+LOS MIL MILLONES SON ARTEFACTO DEL DESALINEAMIENTO, NO DIFERENCIAS
+GENETICAS. GCA y GCF son el mismo ensamblaje GRCh38.p14 publicado por dos
+bases de datos que ordenan los registros de forma distinta. El diagnostico
+completo, con el registro exacto donde se rompe, esta en la seccion
+"LOS DOS HALLAZGOS DE LA SEGUNDA REVISION", mas abajo, y en la cabecera de
+secuencias.py.
+
+Se conservan los dos numeros a proposito: el contraste entre 67 % y 100 % es
+la mejor forma de explicar por que emparejar importa.
+
+Pares de prueba con verdad conocida, generados por generar_par.py:
+  datos\par_10MB_A.fna  + par_10MB_B.fna  -> 5.000 diferencias exactas
+  datos\par_200MB_A.fna + par_200MB_B.fna -> 20.000 diferencias exactas
+Cada uno lleva su .esperado.txt con la lista completa de posiciones, filas y
+columnas mutadas. Esa es la respuesta correcta contra la que se verifica.
+
+
+================================================================================
+QUE HACE EXACTAMENTE LA APLICACION
+================================================================================
+
+Se arranca con:  python app_p14.py
+
+La ventana pide dos archivos FASTA, una plataforma y unos parametros, y al
+pulsar "Comparar cadenas" devuelve cuantas posiciones difieren y donde.
+
+MODOS (botones de radio, interfaz.py:429)
+  CPU        compara con n procesos
+  GPU        compara con el kernel CUDA
+  NPU        compara con el grafo ONNX de n capas
+  Las tres   corre las tres UNA DESPUES DE OTRA y las compara entre si
+
+"Las tres" NO es trabajo simultaneo. Eso era el P1.3. Aqui van en fila para
+poder medirlas por separado y demostrar que las tres dan el mismo numero.
+El bucle esta en interfaz.py:1288.
+
+PARAMETROS (uno de paralelismo por plataforma, como pide el enunciado)
+  Procesos de CPU   1 a 12 (los nucleos logicos de este equipo)  "n nucleos"
+  Bloques de GPU    1 a 1024, por defecto 1024                   "n unidades"
+  Lote de GPU (MB)  1 a 512  (memoria/transferencia, NO paralelismo)
+  Capas de NPU      1 a 22                                       "n capas"
+
+  Cada campo valida su rango EN EL TECLADO (Aplicacion._numero_en_rango):
+  no se puede escribir un valor por encima del maximo ni por debajo del
+  minimo. Con 12 nucleos, teclear 100 se queda en 10. El texto de ayuda
+  "1 a N" sale del mismo rango que se valida, no se escribe aparte.
+
+  BLOQUES Y SMs, para la defensa. La RTX 4050 tiene 20 SMs; cada bloque se
+  asigna entero a un SM, y en un SM caben 6 bloques de 256 hilos a la vez
+  (1536 hilos = 48 warps). Toda la tarjeta: 20 x 6 = 120 bloques
+  simultaneos. Por encima de 120 los bloques esperan en cola; 1024 es el
+  tope del campo, no un limite del hardware. El kernel usa grid-stride, asi
+  que con menos bloques cada hilo recorre mas posiciones y el resultado es
+  el mismo. Medido sobre 200 MB, lote 64 MB:
+      1 bloque 0,824 s | 5 bloques 0,551 s | 20 bloques 0,380 s |
+      1024 bloques 0,375 s
+  Mejora hasta ~20 y luego se planta: el cuello es copiar a la tarjeta, no
+  calcular.
+  El LOTE es otra cosa: cuantos MB se copian a la VRAM en cada viaje. Existe
+  porque los dos genomas (3,1 GB cada uno) no caben a la vez en 6 GB. No
+  cambia cuantos trabajan a la vez.
+
+DOS CASILLAS, las dos marcadas por defecto
+  Emparejar por secuencia
+      Compara cromosoma con cromosoma en vez de posicion con posicion.
+      Indexa los dos archivos, empareja los registros y compara pareja a
+      pareja. Sin esto, dos archivos con las mismas secuencias en distinto
+      orden dan un resultado sin sentido (ver HALLAZGO 1).
+      Desmarcarla reproduce el comportamiento antiguo, que es util para
+      ensenar el contraste en el informe.
+  Medicion justa
+      Descarta una corrida de calentamiento y publica la MEDIANA de tres.
+      Sin ella, la primera plataforma paga las fallas de pagina y lee del
+      disco mientras las siguientes encuentran los datos en la cache del
+      sistema: medido, la CPU pasaba de 429 MB/s a 2000 MB/s sobre los
+      mismos datos solo por correr en segundo lugar.
+
+SEIS PESTANAS
+  Diferencias         tabla con posicion, fila, columna y los dos caracteres
+  Rendimiento         4 graficas: tiempo, velocidad, preparacion frente a
+                      trabajo, y donde caen las diferencias en el archivo
+  Nucleos y recursos  4 graficas: uso de cada nucleo logico, uso por
+                      plataforma, temperatura por plataforma, memoria por
+                      plataforma. ESTA es la captura de "uso de recursos" que
+                      pide el enunciado, y alimenta los criterios 4, 5 y 6.
+  Por secuencia       una fila por pareja: nombre, con que clave se
+                      emparejo, donde empieza en cada archivo, largo y
+                      diferencias. Al final, las que se quedaron sin pareja,
+                      marcadas como no comparadas.
+  Evidencias          la matriz 6x3 de la rubrica, rellenada con las
+                      mediciones reales de la corrida
+  Registro            todo lo que hizo el programa, incluidos los ajustes que
+                      aplico solo, el resumen del emparejamiento y la lista
+                      de secuencias sin pareja
+
+El panel de resultado muestra UNA LINEA POR PLATAFORMA, no solo la ultima, y
+debajo un indicador de si las tres coinciden. Antes se sobrescribia con cada
+resultado y en modo "Las tres" solo se veia la NPU, que es justo cuando mas
+interesa compararlas.
+
+COLUMNA IZQUIERDA
+  Los dos archivos, la plataforma, los parametros, el resultado con la cifra
+  grande de diferencias, y ocho magnitudes de recursos en vivo que se
+  refrescan cada 500 ms.
+
+BARRA SUPERIOR
+  El hardware detectado, cada pieza del color de su plataforma (azul CPU,
+  verde GPU, ambar NPU). Si no hay NPU lo dice en gris con el proveedor que
+  va a usar en su lugar.
+
+
+================================================================================
+ARCHIVOS DEL PROYECTO
+================================================================================
+
+  comparador.py      Base comun. Lee el FASTA, extrae la secuencia limpia a un
+                     archivo .seq, la mapea en memoria, convierte posicion a
+                     fila y columna, valida las entradas y arma el diccionario
+                     de resultados que devuelven los tres motores.
+                     Clase Cadena. Excepcion ErrorEntrada.
+  motor_cpu.py       Comparacion en CPU con multiprocessing. n procesos, cada
+                     uno mapea el .seq y compara su tramo.
+  motor_gpu.py       Comparacion en GPU con un kernel CUDA escrito a mano
+                     (@cuda.jit). Por lotes, dos buffers pinned y dos streams.
+                     n bloques configurable (bloques_validos).
+  motor_npu.py       Comparacion en NPU. Construye un grafo ONNX y lo ejecuta
+                     con onnxruntime sobre el mejor proveedor disponible.
+                     Carga el runtime desde vendor\.
+  secuencias.py      Indice de los registros de un FASTA y emparejamiento
+                     entre dos archivos. Es lo que hace que la comparacion
+                     signifique algo cuando los dos guardan las mismas
+                     secuencias en distinto orden. Ver el HALLAZGO 1.
+  monitor.py         Muestreo de CPU por nucleo, RAM, GPU, VRAM, las dos
+                     temperaturas y el uso de NPU. Heredado del P1.3 mas la
+                     sonda de NPU y el minimo de muestras.
+  evidencias.py      Arma la matriz 6x3 de la rubrica (CPU, GPU, NPU).
+  generar_par.py     Genera pares de cadenas con diferencias exactas conocidas
+                     a partir de un FASTA real. Escribe el .esperado.txt.
+  verificar.py       125 comprobaciones: correccion de los tres motores contra
+                     la verdad conocida, y robustez frente a entradas malas.
+  pruebas_interfaz.py 65 comprobaciones sobre la ventana: botones en el orden
+                     equivocado, campos invalidos y fuera de rango, dialogos,
+                     cierre.
+  capturas.py        Abre la app, ejecuta una comparacion real y fotografia
+                     las cinco pestanas. Tambien exporta CSV y evidencias.
+  app_p14.py         Lanzador. Casi vacio a proposito (ver decision 5).
+  interfaz.py        La ventana. Va aparte del lanzador.
+  vendor\onnxruntime Copia de onnxruntime 1.24.4 con DirectML (68 MB).
+  modelos\           Grafos ONNX ya construidos, uno por numero de capas.
+  datos\             Los dos genomas, los pares de prueba y la cache (.seq,
+                     .idx y su huella .origen). La cache PESA 6,6 GB por los
+                     .seq de los dos genomas. Se puede borrar: se regenera.
+                     NO borrar los .fna.
+  resultados\        CSV, matriz de evidencias, graficas y capturas.
+
+
+================================================================================
+FLUJO DE UNA COMPARACION, PASO A PASO
+================================================================================
+
+1. El usuario elige dos archivos. Se validan EN EL ACTO con
+   comparador.validar_fasta (interfaz.py:_elegir), no al pulsar Comparar:
+   descubrir a mitad de leer 3 GB que el archivo no servia es inaceptable.
+
+2. Al pulsar Comparar, interfaz._validar comprueba todo otra vez (el archivo
+   pudo borrarse entre medias) y normaliza los campos numericos vacios.
+
+3. interfaz._recoger_configuracion copia los valores de la ventana a un
+   diccionario NORMAL. Esto es obligatorio, ver decision 6.
+
+4. El hilo trabajador llama a comparador.preparar() para cada archivo. Eso
+   extrae la secuencia sin cabeceras ni saltos de linea a datos\<nombre>.seq
+   y devuelve un objeto Cadena que lo mapea con numpy.memmap. Si el .seq ya
+   existe y su huella (.seq.origen) coincide con la del FASTA, se reutiliza
+   y cuesta milisegundos. Ver decision 13.
+
+5. Para cada plataforma pedida se llama a su motor. Cada motor recibe los dos
+   objetos Cadena, devuelve (dict_resultado, segundos).
+
+6. El resultado viaja por una cola al hilo principal, que rellena la tabla,
+   redibuja las ocho graficas y actualiza la matriz de evidencias.
+
+
+================================================================================
+DECISIONES DE DISENO QUE NO SE DEBEN DESHACER
+================================================================================
+
+1. LA SECUENCIA SE EXTRAE UNA VEZ, ANTES Y FUERA DEL CRONOMETRO
+   Un FASTA lleva cabeceras y un salto de linea cada 80 caracteres, y nada de
+   eso es ADN. Si cada motor limpiara el archivo por su cuenta se estaria
+   midiendo la limpieza, que es trabajo de entrada y salida, y los tiempos
+   dejarian de hablar del hardware.
+   Ademas la NPU no tiene otra opcion: no lee archivos, recibe un tensor ya
+   formado. Si la CPU y la GPU leyeran del disco y la NPU no, la comparacion
+   seria una trampa.
+   El coste se publica aparte, en Cadena.preparacion_s.
+
+2. LA SECUENCIA VIVE EN UN ARCHIVO .seq MAPEADO, NO EN MEMORIA
+   La primera version cargaba las dos secuencias en RAM y las copiaba a un
+   bloque de memoria compartida para los procesos hijos. Con los recortes
+   funcionaba; con los genomas completos eran 6,7 GB de secuencia mas 6,7 GB
+   de copia compartida, mas de 13 GB solo para empezar.
+   Ahora cada proceso abre el mismo .seq con numpy.memmap. El sistema
+   operativo hace que las mismas paginas fisicas aparezcan en los doce
+   procesos. Consumo: los 6,7 GB de cache de disco y nada mas.
+   Esto es lo que hace viable comparar 3,3 GB en esta maquina.
+
+3. EL CONTEO ES EXACTO, LA LISTA DE POSICIONES ESTA ACOTADA
+   Los dos genomas dan 1.072.801.765 diferencias. Guardarlas todas serian
+   8,6 GB de indices. Por eso comparar_rango devuelve (cuantas, primeras,
+   tramos): el conteo siempre exacto, y solo las primeras MAX_DETALLE
+   posiciones con su detalle. El resultado dice si la lista esta completa.
+
+4. EL POOL Y LOS KERNELS SE PREPARAN FUERA DEL RELOJ
+   Comparar dos bytes es una instruccion. Sobre 200 MB la operacion completa
+   dura centesimas de segundo, mientras que arrancar doce procesos en Windows
+   cuesta medio segundo y compilar el kernel CUDA cuatro segundos.
+   MEDIDO EN ESTE PROYECTO: con el arranque dentro del reloj, doce procesos
+   salian OCHENTA VECES MAS LENTOS que uno (0,562 s contra 0,007 s). Eso no
+   dice nada sobre el paralelismo y todo sobre el coste de 'spawn'.
+   Ahora el Pool se crea, se calienta con tareas vacias y mapea los archivos
+   antes de arrancar el cronometro. El coste va en 'preparacion_s' y se
+   dibuja en la grafica "Preparacion frente a trabajo".
+
+5. EL LANZADOR Y LA VENTANA VAN EN ARCHIVOS SEPARADOS
+   En Windows multiprocessing usa 'spawn': cada proceso hijo reimporta el
+   modulo principal. Si la ventana estuviera en app_p14.py, los doce procesos
+   cargarian Tkinter, matplotlib, numba, CUDA y onnxruntime sin usar nada.
+   Medido en el P1.2: un solo import de mas subia contar_paralelo sobre 2 MB
+   de 1,34 s a 5,51 s. Por eso app_p14.py solo tiene el arranque e importa
+   interfaz dentro de main().
+
+6. EL HILO TRABAJADOR NO TOCA NI UNA VARIABLE DE TKINTER
+   Las StringVar no son objetos de Python corrientes: cada .get() entra en el
+   interprete Tcl, y Tcl solo se puede tocar desde el hilo del mainloop.
+   TRAMPA YA PISADA: la primera version llamaba a self.ruta_a.get() dentro
+   del hilo y abortaba con "RuntimeError: main thread is not in the main
+   loop", de forma intermitente segun donde cayera la llamada.
+   Ahora interfaz._recoger_configuracion copia todo a un diccionario en el
+   hilo principal y el hilo trabajador solo ve ese diccionario. Lo que quiere
+   mostrar lo deja en una cola.
+
+7. UN SOLO MONITOR DE RECURSOS A LA VEZ
+   psutil.cpu_percent con intervalo None calcula el porcentaje contra la
+   ultima llamada, y esa referencia es global al proceso. Dos monitores la
+   corrompen. La ventana mantiene uno vivo y se lo presta a cada medicion con
+   Monitor.marcar() y Monitor.resumen(desde).
+
+8. RECURSOS NO MEDIDOS SE DEJAN VACIOS, NUNCA EN CERO
+   Una comparacion en GPU sobre 10 MB dura nueve milisegundos, menos que el
+   intervalo de muestreo. Con una sola lectura el promedio sale 0,0 %, y
+   publicar ese cero se leeria como "la GPU no se uso", que es falso.
+   monitor.resumen() exige MINIMO_MUESTRAS (2) antes de publicar nada.
+   TRAMPA YA PISADA: esta comprobacion estaba definida pero no se aplicaba, y
+   la matriz de evidencias publico "GPU media 0.0 %" en una corrida real.
+
+9. LA TEMPERATURA DEL PROCESADOR SE LEE EN UN HILO APARTE
+   La consulta cuesta del orden de medio segundo. En el bucle principal
+   bajaria el muestreo de diez lecturas por segundo a dos.
+   OJO CON LA UNIDAD: Win32_PerfFormattedData_Counters_ThermalZoneInformation
+   entrega KELVIN ENTEROS. El otro camino habitual,
+   MSAcpi_ThermalZoneTemperature, los da en decimas y exige administrador.
+   Confundirlos saca temperaturas bajo cero; ya paso en el P1.3.
+
+10. LAS GRAFICAS SE AJUSTAN AL LIENZO A MANO
+    Un lienzo de Tk mide un pixel hasta que su pestana se muestra por primera
+    vez. Matplotlib solo redimensiona su figura con un evento de
+    redimensionado del widget, que no llega cuando la pestana simplemente
+    pasa al frente.
+    TRAMPA YA PISADA: las graficas salian recortadas por la derecha y por
+    abajo justo en las capturas del informe.
+    interfaz._al_cambiar_pestana mide el widget y llama a set_size_inches.
+
+11. EL PIE SE EMPAQUETA ANTES QUE EL CUERPO
+    En Tk, pack reparte el espacio por orden de llegada. Si el cuerpo pide
+    primero todo lo que sobra con expand=True, al pie no le queda nada.
+    TRAMPA YA PISADA: la barra de progreso desaparecia por debajo del borde.
+
+12. EL MAPA DE DIFERENCIAS SE DIBUJA DESDE EL REPARTO, NO DESDE EL DETALLE
+    TRAMPA YA PISADA: la grafica "Donde caen las diferencias" usaba la lista
+    de posiciones, que esta cortada en las primeras mil. Resultado: todas las
+    barras se amontonaban al principio del archivo y daba a entender que las
+    cadenas solo divergen ahi. Falso.
+    Ahora motor_cpu.comparar_rango devuelve tambien 'tramos', el conteo de
+    cada trozo de 64 MB, que sale gratis porque el rango ya se recorre asi.
+
+13. LA CACHE SE VALIDA CON LA HUELLA DEL FASTA, NO CON LA FECHA
+    Los .seq y .idx se guardan en datos\ por NOMBRE de archivo. Antes se
+    daban por buenos si eran mas nuevos que el FASTA. Dos FASTA distintos
+    con el mismo nombre compartian cache, y Windows conserva la fecha al
+    copiar, asi que el segundo leia los datos del primero sin aviso.
+    TRAMPA YA PISADA: datos\par_200MB_B.idx estaba vacio (solo cabecera), el
+    emparejamiento no encontraba ninguna secuencia en B y pasaba a comparar
+    de corrido en silencio.
+    Ahora junto a cada cache hay un <cache>.origen con "tamano mtime_ns" del
+    FASTA (comparador.huella_origen / cache_al_dia / anotar_origen). Si no
+    coincide, o no existe, la cache se rehace. Probado en verificar.py,
+    PARTE 2e.
+
+14. LA MATRIZ DE EVIDENCIAS SALE DE LAS MISMAS MUESTRAS QUE LAS GRAFICAS
+    TRAMPA YA PISADA: la matriz usaba monitor.resumen() de TODA la sesion,
+    con los ratos sin trabajo, mientras las graficas usan la ventana de cada
+    plataforma. Decia "CPU media 59 %" con la grafica de nucleos al 95 %.
+    Ahora interfaz.matriz_evidencias pasa a evidencias.matriz el resumen de
+    cada plataforma (por_plataforma) y cada columna usa el suyo; una
+    plataforma que no corrio queda vacia.
+
+================================================================================
+EL MOTOR DE NPU, EN DETALLE
+================================================================================
+
+Es la parte que hay que entender antes de tocar nada.
+
+UNA NPU NO SE PROGRAMA COMO UNA GPU. No se le escriben kernels, no se le
+lanzan hilos y no ejecuta codigo arbitrario. Es un acelerador de INFERENCIA:
+se le entrega un grafo de red neuronal y un runtime lo reparte. Su repertorio
+acelerado es estrecho, basicamente convoluciones y multiplicaciones de
+matrices sobre enteros.
+
+Por eso el enunciado habla de "NPU n capas": el paralelismo de una NPU se
+expresa en capas del grafo, igual que el de la GPU en hilos y bloques.
+
+EL GRAFO (motor_npu.construir_modelo)
+  capa 1  Cast      los dos lotes de bytes pasan a coma flotante
+  capa 2  Sub       se restan; cero donde las cadenas coinciden
+  capa 3  Mul       al cuadrado, para quitar el signo sin usar Abs
+  capa 4  Greater   umbral 0,5. Dos bytes distintos se diferencian al menos
+                    en 1, asi que el cuadrado vale al menos 1
+  capa 5  Cast      la MASCARA: 1 donde difieren, 0 donde coinciden
+  capas 6..n  Conv  n convoluciones de nucleo 2 y paso 2 con pesos [1,1].
+                    Cada una suma de dos en dos y reduce el vector a la
+                    mitad. Es una reduccion en arbol.
+  final   ReduceSum suma lo que queda: el total de diferencias
+  rama    NonZero   las posiciones donde la mascara esta encendida
+
+POR QUE LAS CONVOLUCIONES. Un grafo que solo restara y comparara se lo
+devolveria entero a la CPU sin avisar, y se estaria diciendo "esto corre en
+la NPU" mientras corre en la CPU. Una convolucion es una multiplicacion de
+matrices, que es exactamente para lo que la NPU esta construida.
+
+SOBRE LA CUANTIZACION INT8, que es donde el profesor insiste: la mascara solo
+contiene ceros y unos y los pesos son unos. Cuantizar ese grafo a enteros de
+8 bits NO PERDERIA NADA: el resultado seria identico bit a bit al de coma
+flotante, porque el dominio del dato ya era binario. En una red de vision la
+cuantizacion siempre degrada; aqui no.
+OJO: EL GRAFO ACTUAL NO ESTA CUANTIZADO. Trabaja en coma flotante (Cast a
+FLOAT, pesos float32). Lo anterior es un argumento, no algo que el programa
+haga. No decir en la defensa que el modelo esta en INT8. Si hiciera falta,
+se cuantiza con onnxruntime.quantization (viene en vendor\) y se compara
+contra la CPU. El docstring de motor_npu.py todavia habla como si lo
+estuviera; no se ha corregido.
+
+COMO SE ELIGE EL HARDWARE (motor_npu.PREFERENCIA, se prueba en este orden)
+  QNNExecutionProvider       NPU Hexagon de Qualcomm (Snapdragon X)   ES NPU
+  OpenVINOExecutionProvider  NPU de Intel (Core Ultra), device NPU    ES NPU
+  VitisAIExecutionProvider   NPU XDNA de AMD (Ryzen AI)               ES NPU
+  DmlExecutionProvider       DirectML, cualquier dispositivo DX12     no
+  CPUExecutionProvider       reserva final                            no
+
+El resultado dice SIEMPRE cual se uso y si es una NPU de verdad. En esta
+maquina sale DmlExecutionProvider con el aviso de que no hay NPU. En un
+equipo con NPU el programa la elige por si solo SOLO SI esta instalado el
+onnxruntime de su fabricante: el de vendor\ solo trae DirectML y CPU (ver
+"SI MANANA HAY UNA NPU DE VERDAD"). El aviso de la ventana ya lo dice asi;
+antes prometia que la usaria "sin cambiar nada", que no era cierto.
+
+COMO SE RESOLVIO NO TENER NPU. No se simula ni se finge. Se hicieron tres
+cosas:
+  a) El grafo es real (en coma flotante, no cuantizado); lo unico que
+     cambia entre un equipo con NPU y uno sin ella es el proveedor de
+     ejecucion.
+  b) El runtime viaja en vendor\, asi que en la maquina del profesor no hay
+     que instalar nada.
+  c) Lo que no se puede medir se declara no medido. La celda de uso de NPU
+     en la matriz dice "este equipo no publica contador de uso de NPU" en vez
+     de inventar un numero.
+
+SI MANANA HAY UNA NPU DE VERDAD, que hay que vigilar:
+  - onnxruntime-directml (el que viaja en vendor\) NO trae los proveedores
+    QNN, OpenVINO ni VitisAI. Si la maquina del profesor tiene NPU Intel hace
+    falta onnxruntime-openvino; si es Snapdragon, onnxruntime-qnn. Los tres
+    se llaman "onnxruntime" y no pueden convivir en la misma carpeta.
+    La solucion prevista es tener varias carpetas (vendor_dml, vendor_openvino,
+    vendor_qnn) y que motor_npu elija cual anadir a sys.path segun el
+    hardware detectado. NO ESTA HECHO.
+  - Las ruedas de vendor\ son cp313 win_amd64. En una maquina ARM64
+    (Snapdragon) o con otra version de Python no valen.
+  - Si el equipo no tiene Python, nada de esto arranca. No se preparo un
+    ejecutable ni un Python portable.
+
+
+================================================================================
+PRUEBAS
+================================================================================
+
+  python verificar.py           125 comprobaciones
+  python pruebas_interfaz.py     65 comprobaciones
+
+Anadidas en la tercera revision:
+  verificar.py       GPU con 1 y 20 bloques contra la verdad conocida;
+                     bloques_validos con 0, negativo, gigante, texto, valido;
+                     PARTE 2e, dos FASTA con el mismo nombre y la misma fecha
+                     no comparten .seq ni .idx.
+  pruebas_interfaz   rangos en el teclado (procesos 1-12, bloques 1-1024,
+                     el 0 y el maximo+1 rechazados) y teclear 100 en el
+                     campo de procesos de verdad se queda en 10.
+
+verificar.py incluye ademas, desde la segunda revision:
+  PARTE 1b  prueba de control con 12.345 sustituciones sobre un recorte de
+            20 MB del archivo B de verdad, por los dos caminos (de corrido y
+            con emparejamiento) y en las cinco configuraciones de motor.
+            ES LA UNICA EVIDENCIA de que el comparador detecta diferencias:
+            el resultado real entre los genomas es cero, y un comparador
+            averiado que devolviera siempre cero pasaria igual.
+  PARTE 1c  conteos imposibles (mayores que las comparadas, o negativos) se
+            marcan invalidos y no publican similitud.
+  PARTE 1d  el indice de secuencias y el emparejamiento, incluido el caso de
+            registros en distinto orden y el de un registro sin pareja.
+
+verificar.py, PARTE 1: los tres motores contra la verdad conocida. No se
+comprueba solo que coincidan entre si, sino que coincidan con el
+.esperado.txt. Se verifica el conteo Y la lista exacta de posiciones.
+
+verificar.py, PARTE 2, las categorias de "pruebas a prueba de usuario":
+  valores limite        0, 1, el maximo, el maximo mas uno, el doble
+  tipos invalidos       'abc', '3.5', '12a', None, [], {}
+  negativos             -5, -999999
+  campo vacio           '', '   '
+  desbordamiento        10**9
+  archivo inexistente, carpeta en vez de archivo, archivo de 0 bytes,
+  archivo binario, texto que no es FASTA, FASTA sin secuencia
+  mismo archivo dos veces, cadenas de distinto largo
+  conversion posicion -> fila y columna
+
+pruebas_interfaz.py abre la ventana de verdad y pulsa los botones en el orden
+equivocado. Sustituye los messagebox por espias que anotan titulo y texto sin
+bloquear, que es la unica forma de probar un dialogo automaticamente.
+
+REGLA DE TODAS ELLAS: el programa o corrige el valor Y LO EXPLICA en el
+registro, o rechaza la entrada con un mensaje legible. Nunca se cae y nunca
+ajusta un parametro en silencio.
+
+
+================================================================================
+LOS DOS HALLAZGOS DE LA SEGUNDA REVISION
+================================================================================
+
+Son los dos que hay que contar en el informe. Los dos se encontraron midiendo,
+no razonando, y los dos cambian el resultado que se publica.
+
+
+--------------------------------------------------------------------------------
+HALLAZGO 1: GENBANK Y REFSEQ GUARDAN LAS MISMAS SECUENCIAS EN DISTINTO ORDEN
+--------------------------------------------------------------------------------
+
+SINTOMA
+Comparando los dos archivos del profesor de corrido, posicion contra posicion,
+salian 1.072.801.765 diferencias y un 67,4754 % de similitud. La grafica del
+reparto mostraba cero diferencias hasta la posicion ~1.950 millones y a partir
+de ahi diferencias parejas en todo el resto: la firma de un descuadre, no de
+divergencia biologica.
+
+DIAGNOSTICO
+Se indexaron los registros de los dos archivos (709 en A, 705 en B). Los
+primeros 29 coinciden AL BYTE: mismo offset y misma longitud, cromosomas 1 al
+11. El registro numero 30 es donde se rompe:
+
+    A (GCA, GenBank)   KI270721.1
+                       "chromosome 11 unlocalized genomic contig"
+                       100.316 bases
+    B (GCF, RefSeq)    NC_000012.12
+                       "chromosome 12, GRCh38.p14 Primary Assembly"
+                       133.275.309 bases
+
+GenBank intercala los contigs no ubicados detras de su cromosoma; RefSeq los
+agrupa en otro sitio. A partir de ahi todo queda desplazado.
+
+La prueba numerica esta en los offsets del cromosoma 12: A lo tiene en
+1.945.677.585 y B en 1.945.577.269. La diferencia es 100.316, exactamente la
+longitud del contig que GenBank metio en medio. Y 1.945.577.269 es justo la
+posicion donde el comparador encontraba la primera diferencia.
+
+SOLUCION
+secuencias.py empareja los registros antes de comparar, con dos claves:
+
+  1. Por cromosoma. La descripcion de los dos formatos contiene
+     "chromosome N, ... primary assembly" (o "mitochondrion"). Son 25
+     registros, cubren el 93,62 % de las bases, y los 25 tienen exactamente
+     la misma longitud en los dos archivos.
+  2. Por longitud unica, para contigs, scaffolds y parches. Empareja 676 mas.
+
+Total: 701 parejas de 709 registros, 99,99 % de las bases. Las 12 que quedan
+sin pareja (8 solo en A, 4 solo en B) se informan y NO se comparan, que es lo
+unico honesto: un registro sin pareja no tiene contra que compararse.
+
+Comparar exige enfrentar porciones que arrancan en offsets distintos, para lo
+que se anadio la clase Tramo en comparador.py. Los tres motores la aceptan
+igual que una Cadena entera.
+
+RESULTADO
+    Comparacion de corrido        1.072.801.765 diferencias,  67,4754 % igual
+    Emparejando por secuencia                 0 diferencias, 100,0000 % igual
+
+Los mil millones eran ARTEFACTO DEL DESALINEAMIENTO, no diferencias geneticas.
+GCA y GCF son el mismo ensamblaje GRCh38.p14 publicado por dos bases de datos.
+
+Verificado con las tres plataformas sobre los genomas completos:
+    CPU x12       6,046 s     0 diferencias   valido
+    GPU 64 MB     7,271 s     0 diferencias   valido
+    NPU 8 capas  21,337 s     0 diferencias   valido
+    Las tres coinciden. Tabla por secuencia: 713 filas.
+
+LECCION PARA EL INFORME
+La comparacion posicion a posicion solo vale mientras las dos secuencias
+estan alineadas. En cuanto una de ellas cambia de longitud o de orden, todo lo
+que sigue queda desplazado y el resultado deja de significar nada. Resolver el
+desalineamiento en el caso general requiere alineamiento de secuencias
+(Needleman-Wunsch, Smith-Waterman), que es un problema de otro orden de coste.
+Aqui se resolvio por el atajo legitimo de emparejar por identidad de registro,
+que funciona porque los dos archivos contienen las mismas secuencias.
+
+OJO: por eso existe la prueba de control (ver mas abajo). Un resultado de cero
+diferencias no demuestra por si solo que el comparador funcione.
+
+
+--------------------------------------------------------------------------------
+HALLAZGO 2: DIRECTML CORROMPE UNA SALIDA CUANDO OTRA ES UN TENSOR VACIO
+--------------------------------------------------------------------------------
+
+SINTOMA
+Sobre los genomas completos, la NPU devolvia numeros de mas de veinte digitos,
+mayores que el numero de posiciones comparadas. Ejemplo real:
+53.841.869.271.039.079.342 sobre 536.870.912 comparadas. La CPU y la GPU
+coincidian entre si; solo fallaba el camino de NPU.
+
+DIAGNOSTICO
+No era precision en coma flotante ni acumulacion. Reproducido en aislado con
+dos lotes identicos, donde el conteo correcto es 0:
+
+    CPU EP     identicos (0 dif)   npu = 0                     ok
+    DirectML   identicos (0 dif)   npu = 8746382355381762665   MAL
+    DirectML   1 diferencia        npu = 1                     ok
+    DirectML   todos distintos     npu = 4194304               ok
+
+Solo falla cuando el resultado es EXACTAMENTE CERO, y devuelve basura distinta
+en cada ejecucion: firma de memoria sin inicializar.
+
+El nodo culpable se aislo probando variantes del grafo:
+
+    actual (int64, keepdims=0, con NonZero)   MAL
+    sin la rama NonZero                       OK siempre
+    salida en float, sin Cast a int64         MAL
+    keepdims=1 (vector en vez de escalar)     MAL
+
+O sea: no depende del tipo de la salida ni de la forma. Cuando un lote no
+tiene ninguna diferencia, NonZero devuelve un tensor de tamano cero y
+DirectML corrompe la OTRA salida del grafo, la del conteo.
+
+En los genomas hay unos 130 lotes identicos; cada uno aportaba un numero
+aleatorio de hasta 19 digitos, y el total acababa con veinte.
+
+SOLUCION
+Dos cambios en motor_npu.py:
+
+  1. El conteo se pide con sesion.run(['cuenta'], ...), nombrando UNA sola
+     salida. ONNX Runtime poda entonces el nodo NonZero y el conteo es
+     correcto siempre. Comprobado:
+         pidiendo solo 'cuenta' : [0, 0, 0, 0, 0, 0]
+         pidiendo las dos       : [0, 3, 0, 0, 0, 0]
+  2. Las posiciones se piden en una segunda inferencia, y solo cuando quedan
+     huecos por llenar Y el lote tiene al menos una diferencia. Esa segunda
+     condicion evita del todo el caso que dispara el fallo.
+
+Efecto secundario bueno: la NPU ya no calcula NonZero en los cientos de lotes
+donde no se necesita ninguna posicion mas, asi que ademas va mas rapida.
+
+RED DE SEGURIDAD
+comparador.resumir comprueba ahora que 0 <= diferencias <= comparadas. Si no,
+marca el resultado como invalido, no publica similitud y la ventana lo senala
+en rojo en vez de mostrar el numero. La comprobacion vale para cualquier
+motor, no solo para la NPU: el fallo estuvo dias a la vista sin que nada lo
+detectara, y eso es lo que no puede repetirse.
+
+LECCION PARA EL INFORME
+Un acelerador no es una caja negra fiable. DirectML es una capa generica sobre
+DirectX 12, y su manejo de tensores de tamano cero tiene un fallo que no avisa
+de ninguna manera: no lanza excepcion, no escribe un aviso, simplemente
+devuelve memoria sin inicializar. La unica defensa es comprobar el resultado
+contra algo independiente, que es exactamente para lo que sirve tener tres
+plataformas calculando lo mismo.
+
+
+--------------------------------------------------------------------------------
+PRUEBA DE CONTROL: LA UNICA EVIDENCIA DE QUE EL COMPARADOR DETECTA
+--------------------------------------------------------------------------------
+
+Al emparejar por secuencia, los dos genomas del profesor dan CERO diferencias.
+Ese cero es correcto, pero por si solo no demuestra nada: un comparador
+averiado que devolviera siempre cero pasaria exactamente igual.
+
+verificar.probar_control_sustituciones toma un recorte de 20 MB del archivo B
+de verdad y le SUSTITUYE 12.345 bases (nunca inserta ni borra, para que la
+longitud no cambie), con las posiciones anotadas de antemano. Despues exige
+que las tres plataformas encuentren esa cantidad exacta y en esas posiciones,
+por los dos caminos: de corrido y con emparejamiento por secuencia activado.
+
+Las 33 comprobaciones de esa prueba pasan en CPU x1, x4, x8, GPU y NPU.
+
+ESTO ES LO QUE HAY QUE ENSENAR EN LA DEFENSA junto al cero: el cero dice que
+los archivos son iguales, y la prueba de control dice que el programa sabria
+verlo si no lo fueran.
+
+================================================================================
+TERCERA REVISION (2026-09-25)
+================================================================================
+
+Se reviso el programa contra lo que dicto el profesor ("CPU n nucleos / GPU
+n unidades / NPU n capas", comparar dos cadenas indicando fila y columna) y
+se recorrio la ventana real con el par de 200 MB y con los dos genomas, por
+los dos caminos, comprobando que cada numero cuadra con los demas.
+
+HUECO QUE FALTABA
+  "GPU n unidades" no se podia elegir: la ventana solo tenia el lote en MB,
+  que no es paralelismo, y el motor tenia los bloques fijos en 1024 con un
+  suelo de 32 (MIN_BLOQUES) que impedia pedir menos. Se anadio el campo
+  "Bloques de GPU" y se quito el suelo. Ver PARAMETROS.
+
+FALLOS ENCONTRADOS Y CORREGIDOS
+  1. Campos numericos sin rango en el teclado: se podia escribir 100
+     procesos con 12 nucleos. Ahora cada campo rechaza al teclear lo que
+     queda fuera de [minimo, maximo].
+  2. Cache compartida entre FASTA del mismo nombre. Ver decision 13. Era
+     lo que dejaba vacio el indice de par_200MB_B.
+  3. Matriz de evidencias con numeros distintos a las graficas. Ver
+     decision 14.
+  4. En modo por secuencia se guardaban solo 20 diferencias por secuencia:
+     con un par de una sola secuencia la tabla mostraba 20 filas. Ahora
+     secuencias.comparar_parejas reparte un presupuesto global de 500.
+  5. La ultima fila de la tabla ("... y N mas") restaba siempre 500, aunque
+     se hubieran mostrado menos. Ahora resta lo que de verdad se mostro.
+  6. En modo por secuencia las celdas de NPU (capas, proveedor, memoria)
+     quedaban vacias en la matriz, porque ultimo_npu solo se rellenaba en el
+     modo de corrido. Ahora _motor_de lo guarda en los dos modos, y lo
+     mismo ultimo_gpu, que alimenta la linea "N bloques lanzados".
+     Los dos se vacian al empezar cada comparacion.
+  7. El aviso de NPU prometia usarla "sin cambiar nada" en un equipo con
+     NPU. Falso con el vendor\ actual. Corregido el texto.
+
+RETOQUES
+  - numba-cuda lanza el aviso de baja ocupacion con su propia clase, que
+    el filtro de numba no atrapaba; con pocos bloques ensuciaba la consola.
+    Se filtra tambien por el texto "Grid size".
+  - "Preparacion frente a trabajo": la barra apilada de preparacion a cero
+    impedia el margen superior y la barra mas alta quedaba pegada al borde.
+    Tope explicito, igual que las otras graficas.
+  - El registro alinea la etiqueta a 16 caracteres ("GPU 1024 bloques").
+
+TRAMPA DE HERRAMIENTAS AL EDITAR ESTOS ARCHIVOS
+  Los .py son de finales de linea mixtos (unos CRLF, otros LF). Editar con
+  sed -i desde Git Bash los pasa a LF sin avisar; hubo que restaurarlos.
+  Y un heredoc de bash convirtio un "\n" dentro de un literal de Python en
+  un salto de linea real, rompiendo verificar.py. Editar con un editor que
+  respete el archivo y ejecutar las pruebas despues de cada cambio.
+
+
+================================================================================
+RESULTADOS MEDIDOS
+================================================================================
+
+Par de 200 MB (20.000 diferencias conocidas), las tres plataformas aciertan:
+  CPU x12          0,162 s   1233 MB/s
+  GPU lote 64 MB   0,174 s   1147 MB/s
+  NPU 8 capas      0,824 s    243 MB/s   (sobre DirectML, no hay NPU aqui)
+
+Barrido de procesos sobre 200 MB:
+  CPU x1   0,268 s    747 MB/s
+  CPU x2   0,142 s   1404 MB/s
+  CPU x4   0,121 s   1657 MB/s
+  CPU x8   0,111 s   1809 MB/s   <- mejor
+  CPU x12  0,137 s   1456 MB/s
+
+Genomas completos, 3,3 GB de secuencia, solo CPU:
+  CPU x1   7,329 s    429 MB/s
+  CPU x4   1,573 s   2000 MB/s   <- speedup 4,66x
+  CPU x8   1,678 s   1875 MB/s
+  CPU x12  1,793 s   1754 MB/s
+  Las cuatro dan 1.072.801.765 diferencias.
+
+Genomas completos en la ventana, las tres plataformas (2026-09-25, medicion
+justa, mediana de tres):
+  De corrido
+    CPU x12           2,294 s   1371 MB/s
+    GPU 120 bloques   1,525 s   2063 MB/s
+    NPU 16 capas     13,619 s    231 MB/s
+    Las tres: 1.072.801.765 diferencias, 67,475388 % iguales.
+  Emparejando por secuencia
+    CPU x12           2,493 s
+    GPU 1024 bloques  3,336 s
+    NPU 8 capas      13,756 s
+    Las tres: 0 diferencias en 701 secuencias, tabla de 713 filas.
+
+Barrido de bloques de GPU sobre 200 MB (lote 64 MB):
+  1 bloque 0,824 s | 5 bloques 0,551 s | 20 bloques 0,380 s |
+  1024 bloques 0,375 s
+
+Para sacar las capturas con los genomas:
+  python capturas.py "datos/GCA_000001405.29_GRCh38.p14_genomic.fna" ^
+                     "datos/GCF_000001405.40_GRCh38.p14_genomic.fna"
+
+LECTURA DE LOS NUMEROS: el problema esta limitado por el ancho de banda de
+MEMORIA, no por calculo. Comparar dos bytes es una instruccion; lo caro es
+traerlos. Por eso el speedup se planta en 4x y luego baja, y por eso la GPU
+no le gana a la CPU: los datos tienen que cruzar el PCIe para volver casi sin
+tocarse. Es el mismo analisis del P1.3 pero con la RAM en lugar del disco.
+La NPU va mas lenta porque el grafo pasa por un runtime generico y porque la
+rama NonZero no la acelera ningun proveedor.
+
+
+================================================================================
+LO QUE NO ESTA HECHO
+================================================================================
+
+  - Las capturas de resultados\ son ANTERIORES al campo "Bloques de GPU" y a
+    las correcciones de la tercera revision: la GPU sale como "GPU 64 MB" y
+    la matriz con los numeros de toda la sesion. Hay que repetirlas.
+  - capturas.py no fija los bloques de GPU (usa el valor por defecto, 1024).
+  - Las capturas del informe con los genomas completos (capturas.py
+    funciona, no se ejecuto con ese par).
+  - El informe en si. No hay generar_informe_docx.py en este proyecto.
+  - Las tres lineas que el profesor dicto en clase: "capturar pantalla con el
+    uso de recursos", "capturar pantalla con el programa", "explicar cada
+    pantalla". Lo primero y lo segundo los produce capturas.py; lo tercero es
+    texto que hay que escribir.
+  - Conteo de bases. NO lo pide el enunciado del P1.4, pero si el profesor lo
+    exige, se recicla motor_cpu.py y motor_gpu.py del P1.3 casi tal cual. El
+    conteo en NPU seria nuevo: un histograma como grafo es una matmul contra
+    una matriz one-hot de 256 columnas.
+  - Soporte para varios proveedores de NPU (ver la seccion del motor de NPU).
+  - Un ejecutable o un Python portable para una maquina sin Python.
+
+
+================================================================================
+RUBRICA DEL P1.4 (pagina 11 del PDF del enunciado)
+================================================================================
+
+Matriz de 6 criterios por 3 plataformas. Las 18 casillas estan pedidas
+explicitamente y las 18 las rellena evidencias.py.
+
+  1) PROGRAMA          codigo de cada plataforma
+  2) LIBRERIA          la que permite usar cada plataforma
+  3) INSTRUCCION       la que la pone a trabajar
+  4) % USO POR NUCLEO
+  5) TEMPERATURA en Celsius
+  6) % USO DE RAM
+
+DOS CASILLAS PIDEN ALGO QUE EL HARDWARE NO PUBLICA, y el programa lo dice en
+vez de dejarlas en blanco:
+  - Temperatura por multiprocesador de GPU: la tarjeta tiene un unico sensor
+    de die. NVML no expone temperatura por SM porque ese sensor no existe.
+  - Temperatura de NPU: va integrada en el mismo die que el procesador y
+    comparte su zona termica. No hay lectura separada.
+Decirlo con su motivo es una respuesta tecnica; dejarlo en blanco parece una
+omision. (En el P1.3 esa celda SI quedo en blanco, es la unica de sus 18 que
+falta.)
+
+Objetivos declarados del enunciado, que van al informe y son conceptuales:
+  1. Recordar los componentes de un computador.
+  2. Diferenciar los propositos de un CPU vs GPU vs NPU.
+  3. Diferenciar computador personal vs servidor empresarial.
+  4. Resumir las caracteristicas de los supercomputadores.
+  5. Resumir los propositos de los supercomputadores.
+
+Lo que dicto en clase, que no esta en el PDF:
+  - Utilizar CPU n nucleos / GPU n unidades / NPU n capas
+  - Comparar 2 cadenas de ADN y determinar caracteres diferentes indicando
+    fila y columna
+  - Capturar pantalla con el uso de recursos
+  - Capturar pantalla con el programa
+  - Explicar cada pantalla
+
+
+================================================================================
+SI HAY QUE CAMBIAR EL PROGRAMA DEPRISA: DONDE TOCAR
+================================================================================
+
+"Que empareje las secuencias con otra clave"
+  -> secuencias.emparejar. Hoy usa cromosoma y luego longitud unica. La
+     expresion regular que reconoce el cromosoma es secuencias._CROMOSOMA.
+
+"Que compare de otra forma"
+  -> motor_cpu.comparar_rango es la unica funcion que de verdad compara.
+     Todo lo demas es reparto, medicion y presentacion. El kernel de GPU es
+     motor_gpu.k_comparar y el grafo de NPU motor_npu.construir_modelo.
+
+"Que ademas cuente A, C, G, T"
+  -> Copiar motor_cpu.py y motor_gpu.py del P1.3 (histograma de 256 bins).
+     Anadir una pestana. El conteo en NPU: one-hot + matmul.
+
+"Que trabajen a la vez, no una detras de otra"
+  -> Copiar el patron de P1.3\motor_hibrido.py: contador compartido, raciones
+     adaptativas, un hilo por plataforma. El bucle actual esta en
+     interfaz.py:1288.
+
+"Que acepte otro formato de archivo"
+  -> comparador._limpiar_bloque y comparador.validar_fasta.
+
+"Que la fila y la columna se cuenten de otra manera"
+  -> comparador.ANCHO_LINEA y comparador.posicion_a_fila_columna. Ahora la
+     rejilla es de 80 caracteres, el ancho estandar de FASTA.
+
+"Que muestre mas o menos diferencias en la tabla"
+  -> comparador.MAX_DETALLE (cuantas se guardan) y interfaz.MAX_TABLA
+     (cuantas se dibujan).
+
+"Que anada o quite una grafica"
+  -> interfaz.TITULOS_RENDIMIENTO y TITULOS_RECURSOS definen los titulos;
+     _dibujar_graficas y _dibujar_recursos las pintan. Hay cuatro ejes por
+     pestana, en self.ejes y self.ejes_rec.
+
+"Que cambie un texto de la matriz de evidencias"
+  -> evidencias.PROGRAMA, LIBRERIA e INSTRUCCION son diccionarios literales
+     al principio del archivo. Las filas 4, 5 y 6 se calculan en
+     evidencias.matriz().
+
+"Que valide otra cosa"
+  -> comparador.validar_fasta (archivos), comparador.validar_par (el par),
+     motor_cpu.procesos_validos, motor_gpu.lote_valido,
+     motor_gpu.bloques_validos, motor_npu.capas_validas,
+     interfaz.Aplicacion._numero_en_rango (teclado; usa _solo_digitos).
+
+"Que cambie el rango de un campo"
+  -> interfaz._panel_configuracion llama a _fila_numero(padre, etiqueta, variable,
+     minimo, maximo); el rango valida el teclado y escribe la ayuda. El de
+     bloques sale de motor_gpu.BLOQUES_MIN y BLOQUES_MAX.
+
+"Que la cache no se reutilice / se rehaga"
+  -> comparador.cache_al_dia. Borrar datos\*.origen obliga a rehacer toda
+     la cache la proxima vez.
+
+ANTES DE DAR NADA POR BUENO:
+  python verificar.py && python pruebas_interfaz.py

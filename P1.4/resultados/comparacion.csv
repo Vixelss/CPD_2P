@@ -1,0 +1,4 @@
+plataforma,etiqueta,tiempo_s,mb_por_s,diferencias,similitud_pct,preparacion_s
+CPU,CPU x12,0.0144,696.83,5000,99.952316,0.0000
+GPU,GPU 1024 bloques,0.0056,1771.39,5000,99.952316,0.0000
+NPU,NPU 8 capas,0.0588,170.12,5000,99.952316,0.0000
