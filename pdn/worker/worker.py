@@ -291,6 +291,7 @@ class Worker:
             return P.crear(P.ERROR, self.wid, r.get("corrida_id"), tarea_id=tid,
                            motivo="tarea de una corrida que este worker no preparo")
         carga = r["carga"]
+        e0 = self.monitor.energia_actual() if self.monitor is not None else {}
         t_inicio = time.time()
         try:
             parcial, info = self.motor.procesar(cfg["operacion"], cfg["params"], cfg["ruta_a"],
@@ -310,6 +311,10 @@ class Worker:
         except Exception as e:
             log.exception("%s: error en la tarea %s", self.wid, tid)
             return P.crear(P.ERROR, self.wid, self.corrida_id, tarea_id=tid, motivo=str(e))
+        if self.monitor is not None:
+            e1 = self.monitor.energia_actual()
+            info = dict(info, energia_j={k: (round(e1[k] - e0[k], 4) if e1.get(k) is not None
+                                             and e0.get(k) is not None else None) for k in e1})
         self._quizas_congelado()
         self.tareas_hechas += 1
         return P.crear(P.RESULTADO, self.wid, self.corrida_id, tarea_id=tid, parcial=parcial,

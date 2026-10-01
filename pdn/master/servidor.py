@@ -330,6 +330,9 @@ class Master:
             raise ErrorCorrida("Ningun worker conectado puede participar: %s" % (corrida.excluidos or "no hay workers"))
         self.corrida = corrida
         self._fin_notificar.clear()
+        # Solo se conservan las series de monitoreo de las ultimas corridas
+        for vieja in list(self.monitoreo)[:-10]:
+            del self.monitoreo[vieja]
         self._evento("corrida", "Corrida %s (%s) en preparacion con %d workers" % (
             corrida.corrida_id, cfg["operacion"], len(corrida.participantes)))
         return corrida.corrida_id
@@ -498,8 +501,10 @@ class Master:
         c = self.corrida
         if c is None or c.estado not in (PREPARANDO, EJECUTANDO) or w.wid not in c.participantes:
             return
-        fila = {"t": round(time.time() - (c.t_inicio or c.t_creacion), 3), "worker": w.wid, **{
-            k: v for k, v in metricas.items() if not isinstance(v, (dict, list))}}
+        ahora = time.time()
+        fila = {"t": round(ahora - (c.t_inicio or c.t_creacion), 3), "t_abs": ahora, "worker": w.wid,
+                "dispositivo": w.dispositivo, "fase": c.estado,
+                **{k: v for k, v in metricas.items() if not isinstance(v, (dict, list)) and k != "t"}}
         self.monitoreo.setdefault(c.corrida_id, []).append(fila)
 
     def _config_worker(self, c: Corrida, w: WorkerInfo) -> dict:
@@ -780,6 +785,7 @@ class Master:
                 "preparacion_s": w.preparacion_s if w else None,
                 "excluido": w.excluido if w else None, "motor": w.motor if w else None})
         prep = [p["preparacion_s"] for p in por_worker if p["preparacion_s"] is not None]
+        energia = self._energia(c) if c.t_fin else []
         val = c.validacion or {}
         t_ref = val.get("tiempo_referencia_s")
         return {
@@ -794,6 +800,7 @@ class Master:
             "tareas_total": len(c.tareas), "reasignaciones": c.reasignaciones,
             "descartados": c.descartados, "excluidos": c.excluidos,
             "por_worker": por_worker, "validacion": c.validacion, "carpeta": c.carpeta,
+            "energia": energia, "energia_por_arquitectura": self.energia_por_arquitectura(energia),
             "t_inicio": c.t_inicio, "t_fin": c.t_fin}
 
     def _cerrar_corrida(self, estado: str) -> None:
@@ -812,7 +819,7 @@ class Master:
                 guardar(c.carpeta, resumen, c.resultado or {}, [t.fila(c.t_inicio) for t in
                         sorted(c.tareas.values(), key=lambda t: t.tid)], c.config,
                         recursos=self.monitoreo.get(c.corrida_id),
-                        energia=self._energia(c))
+                        energia=resumen["energia"])
             except OSError as e:
                 log.error("No se pudieron guardar los resultados: %s", e)
         if estado == TERMINADA:
@@ -846,10 +853,55 @@ class Master:
         except OSError as e:
             log.warning("No se pudieron guardar las velocidades: %s", e)
 
-    def _energia(self, c: Corrida) -> list[dict] | None:
-        # Se completa en la etapa de monitoreo; aqui no se inventan valores
-        filas = [f for f in self.monitoreo.get(c.corrida_id, []) if f.get("energia_j") is not None]
-        return filas or None
+    CLAVE_ENERGIA = {"cpu": "cpu_j", "gpu": "gpu_j", "npu": "ane_j", "opencl": "cpu_j"}
+    FUENTE_ENERGIA = {"cpu_j": "RAPL (paquete completo)", "gpu_j": "NVML", "ane_j": "powermetrics (ANE)"}
+
+    def _energia(self, c: Corrida) -> list[dict]:
+        """Energia por worker en la ventana [t_inicio, t_fin], de los latidos y de las tareas.
+
+        Con menos de dos latidos en la ventana, la energia queda en None (no medida).
+        """
+        filas = []
+        serie = self.monitoreo.get(c.corrida_id, [])
+        for wid in c.participantes:
+            w = self.workers.get(wid)
+            if w is None:
+                continue
+            clave = self.CLAVE_ENERGIA.get(w.dispositivo, "cpu_j")
+            dentro = [f for f in serie if f["worker"] == wid and f.get(clave) is not None
+                      and c.t_inicio and c.t_fin and c.t_inicio <= f["t_abs"] <= c.t_fin + 1.0]
+            energia = (dentro[-1][clave] - dentro[0][clave]) if len(dentro) >= 2 else None
+            hechas = [t for t in c.tareas.values() if t.worker == wid and t.estado == HECHA]
+            por_tarea = [(t.info.get("energia_j") or {}).get(clave) for t in hechas]
+            e_tareas = sum(por_tarea) if por_tarea and all(x is not None for x in por_tarea) else None
+            nbytes = sum(t.nbytes for t in hechas)
+            segundos = (dentro[-1]["t_abs"] - dentro[0]["t_abs"]) if len(dentro) >= 2 else None
+            base = energia if energia is not None else e_tareas
+            filas.append({"worker": wid, "dispositivo": w.dispositivo, "fuente": self.FUENTE_ENERGIA[clave],
+                          "energia_j": None if energia is None else round(energia, 3),
+                          "energia_tareas_j": None if e_tareas is None else round(e_tareas, 3),
+                          "bytes": nbytes, "mb_por_j": (nbytes / 1048576 / base) if base else None,
+                          "potencia_media_w": (energia / segundos) if (energia is not None and segundos) else None,
+                          "muestras": len(dentro)})
+        return filas
+
+    @staticmethod
+    def energia_por_arquitectura(filas: list[dict]) -> dict:
+        """Suma por dispositivo; si algun worker del grupo no tiene dato, el total es None."""
+        salida: dict = {}
+        for f in filas:
+            g = salida.setdefault(f["dispositivo"], {"energia_j": 0.0, "bytes": 0, "completo": True})
+            e = f["energia_j"] if f["energia_j"] is not None else f["energia_tareas_j"]
+            if e is None:
+                g["completo"] = False
+            else:
+                g["energia_j"] += e
+            g["bytes"] += f["bytes"]
+        for g in salida.values():
+            if not g.pop("completo"):
+                g["energia_j"] = None
+            g["mb_por_j"] = (g["bytes"] / 1048576 / g["energia_j"]) if g["energia_j"] else None
+        return salida
 
     # -- instantanea -------------------------------------------------------
     def _publicar(self) -> None:

@@ -17,7 +17,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E3 Master, workers y clúster simulado | Hecha |
 | E4 Modo MPI y escalabilidad | Hecha |
 | E5 Motor GPU CUDA | Hecha (lógica; rendimiento pendiente en hardware) |
-| E6 Monitoreo y energía | Pendiente |
+| E6 Monitoreo y energía | Hecha (energía real pendiente en hardware) |
 | E7 Dashboard | Pendiente |
 | E8 Alta disponibilidad | Pendiente |
 | E9 NPU en la Mac | Pendiente |
@@ -78,9 +78,19 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Pruebas (`tests/test_motor_gpu.py`, con `NUMBA_ENABLE_CUDASIM=1`): equivalencia exacta con la referencia de las cuatro operaciones, núcleo GPU contra numpy, 1 y 2 streams, validaciones de rango (lote contra VRAM de la MX450), worker GPU repartiendo con uno de CPU en el clúster simulado.
 - Se corrigió una prueba de integridad de E3 que fallaba de forma intermitente: con un solo byte dañado, a veces la unidad la procesaba otro worker. Ahora se dañan varias unidades.
 
+### E6. Monitoreo y energía
+
+- `pdn/monitoreo/recursos.py`: `Monitor` (uso por núcleo con un solo muestreador, frecuencia, temperatura con `psutil.sensors_temperatures`, RAM, RSS del worker, red, energía), `resumen(desde)` con `None` si hay menos de dos muestras.
+- `pdn/monitoreo/energia.py`: `LectorRAPL` (desborde, varios paquetes, "sin permiso"), `LectorNVML` (uso, memoria, temperatura, potencia integrada), `LectorPowermetrics` (`sudo -n powermetrics` en plist), `MedidorEnergia`.
+- Worker: cada `LATIDO` lleva la muestra completa; cada `RESULTADO` lleva la energía de la tarea (`info.energia_j`).
+- Master: `recursos.csv` (serie por worker con `t_abs` y fase), `energia.csv` (energía por worker de los latidos y de las tareas, MB/J, potencia media), `energia_por_arquitectura` en el resumen.
+- En la nube no hay RAPL, NVML ni `powermetrics`: todo queda en `None` con su motivo, y las pruebas lo verifican.
+- Pruebas: `tests/test_monitoreo.py` (RAPL con un `sysfs` falso: acumulado, desborde, varios paquetes, sin permiso, ausente; `powermetrics`; `Monitor`; `recursos.csv` y `energia.csv` de una corrida del clúster simulado).
+
 ## Pendiente de prueba en hardware
 
 - GPU real en `nodo-vivanco` (RTX 4050) y `nodo-naranjo` (MX450): `PDN_GPU_REAL=1 pytest tests/test_motor_gpu.py` y `python -m herramientas.benchmark_gpu --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq --mb 1024` (rendimiento, solapamiento real con 1 y 2 streams, límite de lote en la MX450 de 2 GB).
+- Energía real: RAPL en los nodos Linux (tras `scripts/setup_nodo.sh`, que da permiso de lectura), NVML en `nodo-vivanco` y `nodo-naranjo`, `powermetrics` en `nodo-hidalgo` (regla de sudoers de `scripts/setup_mac.sh`). Verificar que `energia.csv` tenga valores y que la potencia sea razonable.
 - Afinidad con núcleos P y E reales en el i5-13420H de `nodo-vivanco` (en la nube no hay CPU híbrida; la lógica se probó con una topología simulada).
 - Benchmark SIMD en cada laptop (`python -m herramientas.benchmark_simd --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq`).
 - MPI multinodo con el hostfile real: `scripts/generar_hostfile.py` y luego `python -m pdn.mpi.escalabilidad --archivo GCF_000001405.40_GRCh38.p14_genomic --repeticiones 3 --calentamiento` (series 3 y 4 solo se pueden correr con las laptops).
