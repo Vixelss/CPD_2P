@@ -14,7 +14,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E0 Reorganización y esqueleto | Hecha |
 | E1 Datos y operaciones de referencia | Hecha |
 | E2 Motor CPU y núcleo SIMD | Hecha |
-| E3 Master, workers y clúster simulado | Pendiente |
+| E3 Master, workers y clúster simulado | Hecha |
 | E4 Modo MPI y escalabilidad | Pendiente |
 | E5 Motor GPU CUDA | Pendiente |
 | E6 Monitoreo y energía | Pendiente |
@@ -47,6 +47,17 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - `pdn/worker/hardware.py`: detección completa (CPU, núcleos P/E, hermanos HT, RAM, GPU CUDA, NPU, OpenCL, red, OpenMPI) y `elegir_nucleos` con validación.
 - `herramientas/benchmark_simd.py` escribe `resultados/benchmark_simd.csv`. En la nube (Xeon 2,1 GHz, 32 MB, mediana de 3): histograma numpy 232 MB/s, C escalar 1003, AVX2 2061; comparación numpy 211, escalar 2282, AVX2 12566; patrón GATTACA numpy 497, escalar 175, AVX2 1070.
 - Pruebas: `tests/test_motor_cpu.py` (equivalencia C contra numpy con longitudes no múltiplo de 32, motor con 1 y N procesos, numpy y SIMD, 4 tamaños de unidad, afinidad registrada, validaciones de rango).
+
+### E3. Master, workers y clúster simulado
+
+- `pdn/comun/config.py` (cluster.yaml + valores por defecto), `protocolo.py` (mensajes JSON; se agregaron `PREPARAR` y `LISTO`), `registro_log.py` (log a consola, archivo y memoria para el dashboard).
+- `pdn/master/`: `planificador.py` (adaptativa con ración mínima inicial y fase final decreciente, fija, proporcional, preferencia NPU>GPU>CPU en zonas), `estado.py`, `servidor.py` (`Master`: hilo ZeroMQ ROUTER, API segura entre hilos: `iniciar_corrida`, `esperar_corrida`, `correr`, `simular_fallo`, `cancelar_corrida`, `estado`), `validacion.py` (CRC por unidad, cobertura, referencia), `resultados.py` (resumen.json, resultado.json, tareas.csv, config.json, recursos.csv).
+- `pdn/worker/`: `worker.py` (bucle petición-respuesta, hilo de latidos, fallos simulados `caida` y `congelado`, rotación entre Masters si no hay respuesta en 3 s), `motores.py` (fábrica por dispositivo), `__main__.py`.
+- `pdn/monitoreo/recursos.py`: `Monitor` básico (se completa en E6).
+- `pdn/sim/cluster.py`: `ClusterSimulado` (Master local + workers en procesos con retardo por MB, copias dañadas a propósito).
+- `pdn/cli.py`: `preparar`, `master`, `sim`, `correr` (vía API del dashboard, E7), `referencia` (E4).
+- Pruebas: `tests/test_planificador.py`, `tests/test_cluster_simulado.py` (resultado exacto de las 4 operaciones distribuidas; el nodo rápido procesa más y el ocioso final es < 0,5 s; 20 combinaciones de unidad y tiempo objetivo con 3 y 5 workers; caída y congelado a mitad de corrida; SIGKILL; copia con un byte cambiado rechazada por CRC y nodo marcado sospechoso; copia con huella global distinta excluida; persistencia; errores de configuración). Se corrieron 3 veces seguidas sin fallos.
+- Demo: `python -m pdn.cli sim --workers 4 --retardos 0,0.2,0.5,1 --operacion patrones --mb 4`.
 
 ## Pendiente de prueba en hardware
 
