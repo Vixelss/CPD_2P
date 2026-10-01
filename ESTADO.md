@@ -12,7 +12,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | Etapa | Estado |
 |---|---|
 | E0 Reorganización y esqueleto | Hecha |
-| E1 Datos y operaciones de referencia | Pendiente |
+| E1 Datos y operaciones de referencia | Hecha |
 | E2 Motor CPU y núcleo SIMD | Pendiente |
 | E3 Master, workers y clúster simulado | Pendiente |
 | E4 Modo MPI y escalabilidad | Pendiente |
@@ -30,9 +30,18 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - No había `vendor/`, `datos/` ni archivos `.fna`/`.seq`/`.idx` versionados.
 - Pruebas: `pytest` corre (1 prueba de humo).
 
+### E1. Datos y operaciones de referencia
+
+- `pdn/comun/`: `formato.py` (clases de byte, `resumir_histograma`, fila y columna), `unidades.py` (unidad de 4 MiB), `huellas.py` (`.origen` y CRC32 por unidad).
+- `pdn/preparacion/`: `fasta_a_seq.py` (`preparar`: `.seq`, `.idx`, `.huellas`, `.origen` en una pasada, cache validada por huella), `indice.py` (`Indice.localizar`, `limites_para`), `emparejar.py`.
+- `pdn/operaciones/`: `conteo`, `patrones`, `comparacion`, `zonas`. Interfaz común por módulo: `validar_parametros`, `solape`, `procesar`, `vacio`, `combinar`, `finalizar`, `clave_comparable`. `trabajo.py` define `Trabajo` (operación + índices + espacio a repartir, `carga(inicio, fin)` para una tarea) y `ejecutar_secuencial`.
+- `herramientas/`: `generar_sintetico.py` (FASTA con respuesta conocida, variante CRLF, pares con sustituciones y par reordenado), `ensuciar.py`, `generar_par.py`, `recortar.py`, `fasta_crudo.py`.
+- Pruebas: `tests/test_preparacion.py`, `tests/test_operaciones.py` (12 combinaciones de tamaño de unidad y de tarea para las costuras), `tests/test_herramientas.py`. Se comprobó que las pruebas fallan si se rompe el manejo de límites de registro o el solape.
+- Interfaz de una tarea: `{"inicio", "fin", "solape", "limites": [[indice_registro, inicio], ...]}`; en comparación `{"segmentos": [[id_pareja, ini_a, ini_b, largo], ...]}`.
+
 ## Pendiente de prueba en hardware
 
-(Se completa en cada etapa.)
+- Valores de aceptación de las secciones 8.1 y 8.3 sobre los genomas reales (`GCF_000001405.40` y `GCA_000001405.29`): conteo exacto, 701 parejas, 0 diferencias emparejado, 1.072.801.765 posicional.
 
 ## Preguntas abiertas para el profesor
 
