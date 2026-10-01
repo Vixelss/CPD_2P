@@ -1,0 +1,52 @@
+Archivo : ../P1.1/GCF_000001405.40_GRCh38.p14_genomic.fna  (3185.0 MB)
+CPU     : 8 nucleos fisicos / 12 logicos
+GPU     : NVIDIA GeForce RTX 4050 Laptop GPU (CC 8.9, 20 SMs, 6140 MB VRAM)
+          compilacion JIT: 0.548 s (fuera de la medicion)
+OpenCL  : NVIDIA GeForce RTX 4050 Laptop GPU (discreta, 20 unidades)
+OpenCL  : Intel(R) UHD Graphics (integrada, 48 unidades)
+
+Resultados:
+  CPU secuencial       14.702 s     216.6 MB/s   A=923117203 C=642552917 G=645231996 T=925917038 N=161611379 iupac=103 inval=0
+  CPU paralelo x12      9.233 s     344.9 MB/s   A=923117203 C=642552917 G=645231996 T=925917038 N=161611379 iupac=103 inval=0
+  GPU CUDA 128 MB       1.160 s    2746.4 MB/s   A=923117203 C=642552917 G=645231996 T=925917038 N=161611379 iupac=103 inval=0
+D:\Catolica\Semestre_8\CPD\P1.2\motor_opencl.py:347: RepeatedKernelRetrieval: Kernel 'k_marcar' has been retrieved more than once. Each retrieval creates a new, independent kernel, at possibly considerable expense. To avoid the expense, reuse the retrieved kernel instance. To avoid this warning, use cl.Kernel(prg, name).
+  programa.k_marcar(cola, globales, locales, d_datos,
+D:\Catolica\Semestre_8\CPD\P1.2\motor_opencl.py:350: RepeatedKernelRetrieval: Kernel 'k_borrar' has been retrieved more than once. Each retrieval creates a new, independent kernel, at possibly considerable expense. To avoid the expense, reuse the retrieved kernel instance. To avoid this warning, use cl.Kernel(prg, name).
+  programa.k_borrar(cola, (grupos * grupo,), locales, d_datos,
+D:\Catolica\Semestre_8\CPD\P1.2\motor_opencl.py:353: RepeatedKernelRetrieval: Kernel 'k_histograma' has been retrieved more than once. Each retrieval creates a new, independent kernel, at possibly considerable expense. To avoid the expense, reuse the retrieved kernel instance. To avoid this warning, use cl.Kernel(prg, name).
+  programa.k_histograma(cola, globales, locales, d_datos,
+  OpenCL discreta       1.476 s    2157.8 MB/s   A=923117203 C=642552917 G=645231996 T=925917038 N=161611379 iupac=103 inval=0
+  OpenCL integrada      1.707 s    1866.1 MB/s   A=923117203 C=642552917 G=645231996 T=925917038 N=161611379 iupac=103 inval=0
+
+Consistencia entre motores (254 bins, sin contar saltos de linea):
+  CPU secuencial     identico
+  CPU paralelo x12   identico
+  GPU CUDA           identico
+  OpenCL discreta    identico
+  OpenCL integrada   identico
+
+  Nota: los saltos de linea difieren entre motores, y es lo
+  esperado. La GPU sobreescribe las cabeceras con saltos de
+  linea en vez de eliminarlas. No afecta a ningun conteo.
+      CPU secuencial     41230738
+      CPU paralelo x12   41230738
+      GPU CUDA           41308473
+      OpenCL discreta    41308473
+      OpenCL integrada   41308473
+
+No hay archivo .esperado.txt para este archivo, se omite el
+contraste contra conteos conocidos.
+
+Codigos IUPAC de ambiguedad (validos, NO son errores):
+    Y         36   C o T (pirimidina)
+    R         29   A o G (purina)
+    W         15   A o T (enlace debil)
+    K          8   G o T (ceto)
+    M          8   A o C (amino)
+    S          5   G o C (enlace fuerte)
+    B          2   C, G o T (no A)
+             103   total
+
+No se encontro ningun caracter invalido en este archivo.
+
+RESULTADO GLOBAL: TODO CORRECTO

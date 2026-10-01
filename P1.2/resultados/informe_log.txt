@@ -1,0 +1,60 @@
+Archivo: ../P1.1/recorte_500MB.fna (500.0 MB)
+
+1/3 barrido de CPU
+  CPU con 1 proceso(s)                                     CPU con 2 proceso(s)                                     CPU con 4 proceso(s)                                     CPU con 8 proceso(s)                                     CPU con 12 proceso(s)                                  Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+CPU x1             CPU           2.163      231.2     1.00x     100.0       si
+CPU x2             CPU           1.825      274.0     1.19x      59.2       si
+CPU x4             CPU           1.665      300.4     1.30x      32.5       si
+CPU x8             CPU           1.712      292.0     1.26x      15.8       si
+CPU x12            CPU           1.932      258.8     1.12x       9.3       si
+
+2/3 barrido de lote en GPU
+  GPU con lote de 8 MB                                     GPU con lote de 16 MB                                    GPU con lote de 32 MB                                    GPU con lote de 64 MB                                    GPU con lote de 128 MB                                   GPU con lote de 256 MB                                 Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+GPU lote 8 MB      GPU           0.174     2874.5    12.43x         -       si
+GPU lote 16 MB     GPU           0.164     3048.1    13.19x         -       si
+GPU lote 32 MB     GPU           0.160     3131.2    13.54x         -       si
+GPU lote 64 MB     GPU           0.154     3239.6    14.01x         -       si
+GPU lote 128 MB    GPU           0.149     3350.7    14.49x         -       si
+GPU lote 256 MB    GPU           0.165     3037.9    13.14x         -       si
+
+3/5 escalabilidad por tamano
+  escalabilidad 50 MB: CPU secuencial                      escalabilidad 50 MB: CPU paralelo                        escalabilidad 50 MB: GPU                                 escalabilidad 200 MB: CPU secuencial                     escalabilidad 200 MB: CPU paralelo                       escalabilidad 200 MB: GPU                                escalabilidad 500 MB: CPU secuencial                     escalabilidad 500 MB: CPU paralelo                       escalabilidad 500 MB: GPU                              Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+50 MB              CPU x1        0.218      229.6         -         -       si
+50 MB              CPU x12       0.772       64.8     0.28x         -       si
+50 MB              GPU           0.020     2543.6    11.08x         -       si
+200 MB             CPU x1        0.860      232.6         -         -       si
+200 MB             CPU x12       1.097      182.3     0.78x         -       si
+200 MB             GPU           0.076     2645.3    11.37x         -       si
+500 MB             CPU x1        2.199      227.4         -         -       si
+500 MB             CPU x12       1.945      257.0     1.13x         -       si
+500 MB             GPU           0.188     2659.8    11.70x         -       si
+
+4/5 GPU discreta frente a integrada
+  CUDA sobre la GPU discreta                               OpenCL sobre RTX 4050                                    OpenCL sobre Intel UHD Gfx                             Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+CUDA RTX 4050      GPU           0.162     3083.7    13.34x         -       si
+OpenCL RTX 4050    GPU           0.239     2089.9     9.04x         -       si
+OpenCL Intel UHD Gfx GPU           0.270     1849.6     8.00x         -       si
+
+5/5 escenarios con distintos tipos de error
+  generando errores de tipo letras                         tipo letras en CPU                                       tipo letras en GPU                                       generando errores de tipo digitos                        tipo digitos en CPU                                      tipo digitos en GPU                                      generando errores de tipo simbolos                       tipo simbolos en CPU                                     tipo simbolos en GPU                                     generando errores de tipo espacios                       tipo espacios en CPU                                     tipo espacios en GPU                                     generando errores de tipo mixto                          tipo mixto en CPU                                        tipo mixto en GPU                                      Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+letras (CPU)       CPU           0.827       60.4         -         -       si
+letras (GPU)       GPU           0.022     2261.6         -         -       si
+digitos (CPU)      CPU           0.764       65.4         -         -       si
+digitos (GPU)      GPU           0.019     2565.4         -         -       si
+simbolos (CPU)     CPU           0.776       64.5         -         -       si
+simbolos (GPU)     GPU           0.020     2484.4         -         -       si
+espacios (CPU)     CPU           0.784       63.8         -         -       si
+espacios (GPU)     GPU           0.027     1862.4         -         -       si
+mixto (CPU)        CPU           0.750       66.7         -         -       si
+mixto (GPU)        GPU           0.038     1310.4         -         -       si
+
+Generado:
+  resultados\benchmark.csv
+  resultados\graficas.png
+  resultados\recursos.png
+  resultados\resumen.txt

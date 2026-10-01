@@ -1,0 +1,207 @@
+CONTEXTO
+Proyecto universitario P1.2 de la materia Computacion Paralela, Distribuida
+y en la Nube (PDN). Titulo del enunciado: "Comparacion del Rendimiento entre
+CPU y GPU en el Procesamiento Paralelo de Cadenas de ADN".
+
+Continua al P1.1 (carpeta hermana ..\P1.1) pero es un proyecto aparte con su
+propia rubrica de 50 puntos. De P1.1 se hereda la estructura del motor de
+CPU; lo nuevo es todo el lado GPU, la deteccion de caracteres invalidos y la
+comparativa entre plataformas.
+
+ESTADO: terminado y validado. Este archivo describe lo que hay, no lo que
+falta por hacer.
+
+MAQUINA
+  CPU  Intel i5-13420H, 8 nucleos fisicos / 12 logicos
+  GPU  NVIDIA GeForce RTX 4050 Laptop, 6140 MB VRAM, compute capability 8.9,
+       20 SMs, warp de 32, driver con CUDA 13.1
+  GPU  Intel UHD Graphics integrada, 48 unidades de computo OpenCL,
+       memoria compartida con el sistema
+  32 GB RAM, SSD NVMe, Windows 11, Python 3.13.3
+  Pantalla 1920x1080 fisicos al 125 por ciento, es decir 1536x864 logicos.
+  Importa para la ventana: una ventana de mas de 800 px de alto no cabe.
+
+ENTORNO INSTALADO Y PROBADO
+  numba 0.67.0, numba-cuda 0.30.4, cuda-toolkit 12.9 (wheels de pip, no hace
+  falta instalar el toolkit de NVIDIA a mano), pyopencl, nvidia-ml-py (expone
+  el modulo pynvml; el paquete pynvml suelto esta deprecado y se desinstalo),
+  psutil 7.1.3, matplotlib 3.10.8, numpy 2.3.5, python-docx, pillow.
+
+DATOS DE ENTRADA
+Archivo real entregado por el profesor, NO se copia a esta carpeta:
+  ..\P1.1\GCF_000001405.40_GRCh38.p14_genomic.fna   3.11 GB
+
+Alfabeto real del archivo, medido sobre los 3.11 GB completos:
+  - A C G T, en mayuscula y en minuscula por el soft-masking.
+  - N, base desconocida, 161.611.379 veces.
+  - 103 codigos IUPAC de ambiguedad repartidos por todo el archivo:
+      Y=36  R=29  W=15  K=8  M=8  S=5  B=2
+  - Ningun caracter invalido.
+Los demas caracteres que aparecen en el archivo (letras, digitos, comas,
+puntos) provienen exclusivamente de las lineas de cabecera, tipo:
+  >NC_000001.11 Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly
+
+OJO CON UNA TRAMPA YA PISADA: un muestreo parcial del archivo no encuentra
+los codigos IUPAC. Son 103 en 3.11 GB y estan concentrados en cromosomas
+concretos, de modo que un barrido de 320 MB repartidos por el archivo da
+cero. Solo aparecen al procesar el archivo entero. La primera version de este
+contexto afirmaba, apoyandose en ese muestreo, que la secuencia solo contenia
+ACGTN.
+
+Los codigos IUPAC NO son errores: son notacion estandar del formato FASTA
+para posiciones donde la secuenciacion no resolvio la base exacta pero si
+acoto las posibilidades (R = A o G, Y = C o T, etc). Clasificarlos como
+invalidos seria un error conceptual, por eso el motor los cuenta en una
+categoria propia, separada de las bases y de los errores.
+
+CONSECUENCIA: al no haber caracteres invalidos de verdad en el archivo del
+profesor, este no permite demostrar que el detector funciona, y tanto el
+criterio 3 de la rubrica como el enunciado exigen un archivo "con caracteres
+validos y no validos". Por eso se trabaja con dos tipos de entrada:
+  a) El genoma real -> comparativa de rendimiento entre plataformas.
+  b) Variantes "sucias" con errores inyectados en cantidad y tipo conocidos
+     -> validacion del detector y punto extra de tipos de error.
+     Estas variantes se generan SIEMPRE a partir de recortes del genoma real,
+     nunca de cadenas sinteticas, para que la prueba sea representativa.
+
+FORMATO DEL ARCHIVO
+FASTA estandar. Cabeceras empiezan con '>' y ocupan la linea completa.
+Lineas de secuencia de 80 caracteres. Reglas de conteo:
+  - Las lineas de cabecera se ignoran por completo.
+  - A C G T cuentan; minusculas cuentan igual que mayusculas.
+  - N es base desconocida: se cuenta aparte, NO es un caracter invalido.
+  - Los codigos IUPAC (RYSWKMBDHV) se cuentan aparte, NO son invalidos.
+  - Cualquier otro caracter en una linea de secuencia es INVALIDO y se
+    cuenta, ademas de registrar de que caracter se trata.
+
+ARCHIVOS DEL PROYECTO
+
+  motor_cpu.py     Conteo en CPU. Hereda la estructura del motor_adn.py de
+                   P1.1: el archivo se divide en rangos de bytes, cada
+                   proceso abre el archivo por su cuenta y solo devuelve
+                   numeros. Calcula un histograma de 256 bins.
+  motor_gpu.py     Conteo en GPU con Numba CUDA. Tres kernels encadenados.
+  motor_opencl.py  Conteo en OpenCL, para poder medir tambien la grafica
+                   integrada, que con CUDA es inalcanzable.
+  monitor.py       Muestreo de uso de CPU, RAM, GPU, VRAM y temperatura.
+  ensuciar.py      Generador de archivos con errores conocidos.
+  benchmark_gpu.py Barridos: procesos de CPU, tamano de lote de GPU,
+                   escalabilidad, tipos de error y dispositivos.
+  verificar.py     Prueba de correccion de los tres motores.
+  informe.py       Genera CSV, graficas y resumen para el informe.
+  app_gpu.py       Lanzador de la aplicacion grafica.
+  interfaz.py      La ventana. Va aparte del lanzador, ver mas abajo.
+  capturas.py      Captura la ventana para el informe.
+  generar_informe_docx.py  Construye el informe en Word.
+
+DECISIONES DE DISENO QUE NO SE DEBEN DESHACER
+
+1. UN MISMO ALGORITMO EN LAS TRES PLATAFORMAS
+   Los tres motores calculan un histograma completo de 256 bins y derivan de
+   ahi todos los conteos. Si la CPU usara un atajo distinto al de la GPU, los
+   tiempos no serian comparables y la comparativa no valdria nada. La unica
+   variable debe ser el hardware.
+
+2. LAS CABECERAS SE DESCARTAN DENTRO DEL DISPOSITIVO
+   Limpiarlas en el host antes de enviar el lote seria hacer que la CPU
+   trabaje por la GPU. Por eso hay tres kernels: uno marca donde empieza cada
+   cabecera, otro la sobreescribe con saltos de linea, y el tercero calcula
+   el histograma acumulando primero en memoria compartida del bloque.
+   Consecuencia esperada: el bin del salto de linea difiere entre CPU y GPU.
+   No es un error. Comparar resultados con motor_cpu.bins_significativos.
+
+3. LA COMPILACION QUEDA FUERA DE TODA MEDICION
+   Numba tarda entre 0.7 y 2.8 s en compilar los kernels la primera vez.
+   Incluir eso en el cronometro le cargaria a la GPU un coste que no es del
+   algoritmo. Llamar siempre a precalentar() antes de medir.
+
+4. EL LANZADOR Y LA VENTANA VAN EN ARCHIVOS SEPARADOS
+   En Windows multiprocessing usa spawn y cada proceso hijo reimporta el
+   modulo principal. Medido en este proyecto: tener motor_gpu importado en el
+   modulo principal subia contar_paralelo sobre 2 MB de 1.34 s a 5.51 s,
+   porque los doce hijos cargaban CUDA para no usarlo. Por eso app_gpu.py
+   solo contiene el arranque y todo lo pesado se importa tarde.
+
+5. UN SOLO MONITOR DE RECURSOS A LA VEZ
+   psutil.cpu_percent con intervalo None calcula el porcentaje contra la
+   ultima llamada, y esa referencia es global al proceso. Dos monitores
+   simultaneos se la corrompen. La ventana mantiene uno vivo y se lo presta
+   al barrido mediante Monitor.marcar() y Monitor.resumen(desde).
+
+6. RECURSOS NO MEDIDOS SE DEJAN VACIOS, NUNCA EN CERO
+   Una corrida de GPU puede durar menos que el intervalo de muestreo. Si en
+   ese tramo no hay al menos dos muestras se devuelve None y la columna queda
+   vacia. Un cero se leeria como "la GPU no se uso", que es falso.
+
+7. LA MEMORIA QUE SE GRAFICA ES LA DEL PROCESO, NO LA DEL SISTEMA
+   La del sistema ronda los 16 GB y esconde los cientos de MB que cuesta
+   cada estrategia.
+
+RESULTADOS MEDIDOS
+
+Genoma completo, 3.11 GB, conteos identicos en las tres modalidades:
+  A=923.117.203  C=642.552.917  G=645.231.996  T=925.917.038
+  N=161.611.379  IUPAC=103  invalidos=0
+  CPU secuencial    51.463 s     61.9 MB/s    1.00x
+  CPU paralelo x12  17.469 s    182.3 MB/s    2.95x
+  GPU lote 128 MB    3.443 s    925.2 MB/s   14.94x
+
+Recorte de 500 MB, barrido de lote en GPU: el optimo esta en 64 MB, con
+1117.9 MB/s. Por debajo se desaprovecha el PCIe y se multiplican los
+lanzamientos de kernel; por encima se tarda demasiado en llenar el lote antes
+de empezar a computar. El uso de GPU medido lo confirma de forma
+independiente: 0 por ciento con lotes de 8 MB, 73 por ciento con 64 MB, 74
+por ciento con 128 MB y 50 por ciento con 256 MB.
+
+Eficiencia de la CPU: cae del 100 por ciento con un proceso al 12.7 por
+ciento con doce. El problema esta limitado por entrada y salida, no por
+calculo: anadir procesos no anade ancho de banda de disco.
+
+Escalabilidad: sobre 50 MB la version paralela con doce procesos es casi tres
+veces mas lenta que la secuencial, porque crear los procesos cuesta mas que
+el trabajo. Solo remonta a partir de unos 500 MB.
+
+GPU discreta contra integrada, sobre 500 MB con el mismo kernel OpenCL:
+  Intel UHD integrada    849.5 MB/s
+  RTX 4050 discreta     1185.9 MB/s
+La integrada queda a solo 1.4x de la discreta pese a ser mucho menos potente,
+porque la carga esta limitada por el disco y ella no paga transferencia por
+PCIe: usa directamente la memoria del sistema.
+
+Deteccion de errores, sobre recortes reales de 50 MB con errores inyectados:
+los cinco escenarios (letras, digitos, simbolos, espacios y mixto) se
+detectan con la cantidad exacta. La GPU identifica alrededor de 140.000
+errores por segundo frente a unos 12.000 de la CPU.
+
+RESTRICCIONES
+- Python. GPU principal con Numba CUDA (@cuda.jit), kernels escritos a mano.
+  OpenCL solo para la comparativa entre tarjetas.
+- Codigo comentado en espanol, sin tildes en los comentarios del codigo.
+- Debe funcionar en Windows (multiprocessing exige el guard
+  if __name__ == '__main__' y los scripts deben ser archivos reales, no
+  codigo pasado por la entrada estandar).
+- psutil, pynvml y pyopencl son opcionales: si faltan, el programa sigue
+  funcionando sin esa parte.
+- NO copiar el genoma de 3.11 GB a esta carpeta, se referencia por ruta.
+- Nunca poner valores de ejemplo en los paneles de una captura destinada al
+  informe. Si no hay dato, que se vea que no hay dato.
+
+PUNTOS EXTRA DEL ENUNCIADO: los tres cubiertos
+- Benchmark sobre GPU discreta vs integrada  -> barrido_dispositivos
+- Escenarios con diferentes tipos de errores -> barrido_tipos_error
+- Ajuste de batch size para balance de carga -> barrido_gpu
+
+RUBRICA (50 puntos)
+  1. Funcionamiento correcto del procesamiento CPU          10
+  2. Funcionamiento correcto del procesamiento GPU          10
+  3. Correcta identificacion de caracteres invalidos        10
+  4. Medicion y analisis del desempeno comparativo          10
+  5. Presentacion clara del informe y visualizaciones       10
+
+NOTA SOBRE LA ENTREGA YA REALIZADA
+El informe se entrego antes de terminar estas correcciones. Le faltan tres
+cosas que el codigo ahora si cubre: evidencia visual de la deteccion de
+errores, el uso de CPU y GPU, y la velocidad de identificacion de errores por
+segundo. Ademas su seccion 7.2 dice que el generador produce "copias del
+genoma" cuando el archivo de prueba de esa entrega se derivo de una cadena
+sintetica. Si hubiera opcion de correccion, eso es lo que habria que rehacer.
