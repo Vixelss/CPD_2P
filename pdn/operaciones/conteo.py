@@ -10,6 +10,7 @@ import numpy as np
 
 from pdn.comun.formato import CLASE_INVALIDO, TABLA_CLASES, nombre_byte, resumir_histograma
 from pdn.operaciones.comun import primeras
+from pdn.operaciones.nucleo import NUMPY
 
 NOMBRE = "conteo"
 K_INVALIDOS = 20
@@ -44,10 +45,10 @@ def posiciones_invalidos(datos: np.ndarray, desplazamiento: int, k: int) -> list
 
 
 def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
-             limites: list[list[int]] | None = None) -> dict:
+             limites: list[list[int]] | None = None, nucleo=None) -> dict:
     """Procesa el tramo [inicio, fin) del .seq y devuelve el resultado parcial."""
     datos = np.asarray(seq[inicio:fin])
-    hist = histograma(datos)
+    hist = (nucleo or NUMPY).histograma(datos)
     parcial = {"hist": hist.tolist(), "invalidos_pos": []}
     k = params.get("k_invalidos", K_INVALIDOS)
     if k and int(hist[TABLA_CLASES == CLASE_INVALIDO].sum()):

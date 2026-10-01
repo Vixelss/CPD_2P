@@ -20,12 +20,12 @@ from dataclasses import dataclass
 import numpy as np
 
 from pdn.operaciones.comun import TOPE_POSICIONES, primeras
+from pdn.operaciones.nucleo import NUMPY, clasificar
 from pdn.preparacion.emparejar import Pareja, emparejar
 from pdn.preparacion.indice import Indice
 
 NOMBRE = "comparacion"
 CATEGORIAS = ("solo_caso", "con_n", "reales")
-_N = ord("N")
 
 
 def validar_parametros(params: dict | None) -> dict:
@@ -86,28 +86,16 @@ def construir_espacio(indice_a: Indice, indice_b: Indice, modo: str) -> EspacioC
     return EspacioComparacion(segs, [p.a_dict() for p in parejas], solo_a, solo_b, modo)
 
 
-def clasificar(a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Mascaras (solo_caso, con_n, reales) de dos tramos del mismo largo."""
-    dif = a != b
-    ua = a & 0xDF
-    ub = b & 0xDF
-    solo_caso = dif & (ua == ub)
-    resto = dif & ~solo_caso
-    con_n = resto & ((ua == _N) | (ub == _N))
-    reales = resto & ~con_n
-    return solo_caso, con_n, reales
-
-
 def procesar(seq_a: np.ndarray, seq_b: np.ndarray, segmentos: list[list[int]],
-             params: dict) -> dict:
+             params: dict, nucleo=None) -> dict:
     """Compara los segmentos dados y devuelve el resultado parcial."""
+    nucleo = nucleo or NUMPY
     tope = params["tope"]
     parcial = vacio(params)
     for pid, ia, ib, largo in segmentos:
         a = np.asarray(seq_a[ia:ia + largo])
         b = np.asarray(seq_b[ib:ib + largo])
-        mascaras = clasificar(a, b)
-        cuentas = [int(m.sum()) for m in mascaras]
+        cuentas = list(nucleo.contar_categorias(a, b))
         for cat, c in zip(CATEGORIAS, cuentas):
             parcial[cat] += c
         parcial["comparadas"] += largo
@@ -116,6 +104,8 @@ def procesar(seq_a: np.ndarray, seq_b: np.ndarray, segmentos: list[list[int]],
             parcial["por_pareja"][str(pid)] = [previo[0] + largo] + [
                 x + c for x, c in zip(previo[1:], cuentas)]
         if sum(cuentas) and len(parcial["posiciones"]) < tope:
+            # Las posiciones se buscan con numpy solo si hay diferencias
+            mascaras = clasificar(a, b)
             dif = np.flatnonzero(a != b)[:tope]
             for q in dif:
                 cat = 0 if mascaras[0][q] else (1 if mascaras[1][q] else 2)

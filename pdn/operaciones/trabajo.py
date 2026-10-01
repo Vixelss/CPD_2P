@@ -63,12 +63,13 @@ class Trabajo:
         return {"inicio": inicio, "fin": fin, "solape": solape,
                 "limites": self.indice_a.limites_para(inicio, max(fin_ext, inicio + 1))}
 
-    def procesar(self, seq_a: np.ndarray, seq_b: np.ndarray | None, carga: dict) -> dict:
-        """Procesa una carga con la implementacion de referencia."""
+    def procesar(self, seq_a: np.ndarray, seq_b: np.ndarray | None, carga: dict,
+                 nucleo=None) -> dict:
+        """Procesa una carga (por defecto con el nucleo numpy de referencia)."""
         if self.nombre == "comparacion":
-            return self.op.procesar(seq_a, seq_b, carga["segmentos"], self.params)
+            return self.op.procesar(seq_a, seq_b, carga["segmentos"], self.params, nucleo)
         return self.op.procesar(seq_a, carga["inicio"], carga["fin"], self.params,
-                                carga["limites"])
+                                carga["limites"], nucleo)
 
     def vacio(self) -> dict:
         return self.op.vacio(self.params)

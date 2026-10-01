@@ -16,6 +16,7 @@ import numpy as np
 
 from pdn.comun.formato import complemento_inverso
 from pdn.operaciones.comun import TOPE_POSICIONES, primeras, registro_de
+from pdn.operaciones.nucleo import NUMPY
 
 NOMBRE = "patrones"
 PATRONES_DEMO = ["TATAAA", "GAATTC", "GGATCC", "CCGG", "GATTACA"]
@@ -52,21 +53,8 @@ def solape(params: dict) -> int:
 
 
 def coincidencias(mayus: np.ndarray, patron: str) -> np.ndarray:
-    """Mascara de posiciones donde empieza el patron (datos ya en mayuscula).
-
-    Devuelve un arreglo booleano de largo len(mayus) - len(patron) + 1.
-    """
-    n = mayus.shape[0] - len(patron) + 1
-    if n <= 0:
-        return np.zeros(0, dtype=bool)
-    coincide = np.ones(n, dtype=bool)
-    for i, letra in enumerate(patron):
-        ventana = mayus[i:i + n]
-        if letra == "N":
-            coincide &= ((ventana == 65) | (ventana == 67) | (ventana == 71) | (ventana == 84))
-        else:
-            coincide &= ventana == ord(letra)
-    return coincide
+    """Mascara de posiciones donde empieza el patron (datos ya en mayuscula)."""
+    return NUMPY.coincidencias(mayus, patron)
 
 
 def mascara_costuras(n: int, inicio: int, fin: int, largo: int,
@@ -84,8 +72,9 @@ def mascara_costuras(n: int, inicio: int, fin: int, largo: int,
 
 
 def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
-             limites: list[list[int]]) -> dict:
+             limites: list[list[int]], nucleo=None) -> dict:
     """Busca los patrones que empiezan en [inicio, fin) del .seq."""
+    nucleo = nucleo or NUMPY
     total = seq.shape[0]
     fin_datos = min(fin + solape(params), total)
     mayus = np.asarray(seq[inicio:fin_datos]) & 0xDF
@@ -94,10 +83,10 @@ def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
     for p in params["patrones"]:
         n = max(fin_datos - inicio - len(p) + 1, 0)
         valido = mascara_costuras(n, inicio, fin, len(p), limites)
-        mas = coincidencias(mayus, p) & valido
+        mas = nucleo.coincidencias(mayus, p) & valido
         rc = complemento_inverso(p)
         if params["complemento_inverso"]:
-            menos = mas if rc == p else coincidencias(mayus, rc) & valido
+            menos = mas if rc == p else nucleo.coincidencias(mayus, rc) & valido
         else:
             menos = np.zeros(n, dtype=bool)
         union = mas | menos

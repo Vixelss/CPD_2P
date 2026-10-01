@@ -13,7 +13,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 |---|---|
 | E0 Reorganización y esqueleto | Hecha |
 | E1 Datos y operaciones de referencia | Hecha |
-| E2 Motor CPU y núcleo SIMD | Pendiente |
+| E2 Motor CPU y núcleo SIMD | Hecha |
 | E3 Master, workers y clúster simulado | Pendiente |
 | E4 Modo MPI y escalabilidad | Pendiente |
 | E5 Motor GPU CUDA | Pendiente |
@@ -39,8 +39,19 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Pruebas: `tests/test_preparacion.py`, `tests/test_operaciones.py` (12 combinaciones de tamaño de unidad y de tarea para las costuras), `tests/test_herramientas.py`. Se comprobó que las pruebas fallan si se rompe el manejo de límites de registro o el solape.
 - Interfaz de una tarea: `{"inicio", "fin", "solape", "limites": [[indice_registro, inicio], ...]}`; en comparación `{"segmentos": [[id_pareja, ini_a, ini_b, largo], ...]}`.
 
+### E2. Motor CPU y núcleo SIMD
+
+- `pdn/operaciones/nucleo.py`: interfaz de núcleo (`NucleoNumpy`); las operaciones aceptan `nucleo=`.
+- `pdn/motores/simd/simd_adn.c` + `envoltorio.py` (ctypes): `contar_simbolos_avx2`, `histograma_escalar`, `comparar_avx2`, `buscar_patron_avx2`, `es_avx2`. `scripts/compilar_simd.sh` compila `build/libsimd_avx2.so` y `build/libsimd_escalar.so` (el envoltorio compila solo si faltan).
+- `pdn/motores/cpu.py`: `MotorCPU(procesos, nucleos, impl, reservar)`; pool persistente, afinidad por proceso con `sched_setaffinity`, `partir_carga`, `describir()` con la asignación núcleo↔pid.
+- `pdn/worker/hardware.py`: detección completa (CPU, núcleos P/E, hermanos HT, RAM, GPU CUDA, NPU, OpenCL, red, OpenMPI) y `elegir_nucleos` con validación.
+- `herramientas/benchmark_simd.py` escribe `resultados/benchmark_simd.csv`. En la nube (Xeon 2,1 GHz, 32 MB, mediana de 3): histograma numpy 232 MB/s, C escalar 1003, AVX2 2061; comparación numpy 211, escalar 2282, AVX2 12566; patrón GATTACA numpy 497, escalar 175, AVX2 1070.
+- Pruebas: `tests/test_motor_cpu.py` (equivalencia C contra numpy con longitudes no múltiplo de 32, motor con 1 y N procesos, numpy y SIMD, 4 tamaños de unidad, afinidad registrada, validaciones de rango).
+
 ## Pendiente de prueba en hardware
 
+- Afinidad con núcleos P y E reales en el i5-13420H de `nodo-vivanco` (en la nube no hay CPU híbrida; la lógica se probó con una topología simulada).
+- Benchmark SIMD en cada laptop (`python -m herramientas.benchmark_simd --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq`).
 - Valores de aceptación de las secciones 8.1 y 8.3 sobre los genomas reales (`GCF_000001405.40` y `GCA_000001405.29`): conteo exacto, 701 parejas, 0 diferencias emparejado, 1.072.801.765 posicional.
 
 ## Preguntas abiertas para el profesor

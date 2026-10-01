@@ -124,7 +124,7 @@ def armar_parcial(car: dict, positivas: np.ndarray, prob: np.ndarray | None, par
 
 
 def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
-             limites: list[list[int]]) -> dict:
+             limites: list[list[int]], nucleo=None) -> dict:
     """Evalua con la regla las ventanas que empiezan en [inicio, fin)."""
     car = caracteristicas(seq, inicio, fin, params, limites)
     positivas = es_positiva(car["n_c"], car["n_g"], car["n_cg"], params["ventana"])
