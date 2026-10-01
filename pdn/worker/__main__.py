@@ -10,7 +10,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
+import tempfile
 
 from pdn.comun import config as cfgmod
 from pdn.comun.registro_log import configurar
@@ -21,6 +23,32 @@ def _con_puerto(host: str | None, puerto: int) -> str | None:
     if not host:
         return None
     return host if ":" in host else "%s:%d" % (host, puerto)
+
+
+def tomar_candado(wid: str, master: str):
+    """Candado exclusivo por worker_id y Master en este equipo; None si ya hay otro igual corriendo.
+
+    Dos procesos con el mismo worker_id se pisan en el Master (uno prepara la
+    corrida y al otro le llegan tareas que no preparo), asi que el segundo sale.
+    """
+    try:
+        import fcntl  # noqa: PLC0415
+    except ImportError:  # sin fcntl (Windows): no se comprueba
+        return True
+    usuario = os.environ.get("USER") or str(os.getuid())
+    clave = re.sub(r"[^A-Za-z0-9.-]", "_", "%s-%s" % (wid, master))
+    ruta = os.path.join(tempfile.gettempdir(), "pdn-worker-%s-%s.lock" % (usuario, clave))
+    f = open(ruta, "a+")
+    try:
+        fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return None
+    f.seek(0)
+    f.truncate()
+    f.write(str(os.getpid()))
+    f.flush()
+    return f  # el candado dura lo que viva el proceso
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -63,6 +91,11 @@ def main(argv: list[str] | None = None) -> None:
                a.timeout_master or config["worker"]["master_timeout_s"], a.calibracion_mb,
                monitor=Monitor(dispositivo=a.dispositivo),
                reserva_gpu=int(config["worker"].get("reserva_gpu_nucleos", 1)))
+    candado = tomar_candado(w.wid, masters[0])
+    if candado is None:
+        print("ERROR: ya hay un worker %s corriendo en este equipo (detener_cluster.sh lo detiene)" % w.wid,
+              file=sys.stderr)
+        sys.exit(3)
     import signal  # noqa: PLC0415
 
     def _terminar(*_):

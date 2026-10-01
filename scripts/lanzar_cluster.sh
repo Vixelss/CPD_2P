@@ -2,6 +2,8 @@
 # Arranca el cluster: workers en cada nodo (segun 'dispositivos' de cluster.yaml),
 # el Master de respaldo y el Master con el dashboard en este nodo.
 # Uso: bash scripts/lanzar_cluster.sh [--sin-respaldo] [--solo-workers]
+# --solo-workers relanza los workers que falten (los que ya corren salen solos: un candado
+# impide dos workers con el mismo nombre en el mismo nodo).
 set -euo pipefail
 # shellcheck source=scripts/comun.sh
 source "$(dirname "$0")/comun.sh"
@@ -14,6 +16,12 @@ for a in "$@"; do
         *) error "opcion desconocida: $a" ;;
     esac
 done
+if [[ $SOLO_WORKERS -eq 0 ]]; then
+    # Lanzar dos veces deja procesos repetidos: primero se detiene lo que hubiera
+    info "Deteniendo lo que quedara de un lanzamiento anterior"
+    bash "$(dirname "$0")/detener_cluster.sh" > /dev/null || aviso "no se pudo detener en algun nodo"
+    sleep 2
+fi
 PUERTO="$(cfg valor red.puerto_tareas)"
 PUERTO_DASH="$(cfg valor red.puerto_dashboard)"
 leer_nodos_con --rol master
