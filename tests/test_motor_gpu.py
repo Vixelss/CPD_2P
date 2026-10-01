@@ -7,8 +7,10 @@ import os
 import numpy as np
 import pytest
 
-from pdn.motores import gpu_cuda
-from pdn.operaciones.trabajo import Trabajo, ejecutar_secuencial
+pytest.importorskip("numba", reason="numba no instalado (solo requirements/gpu.txt lo trae)")
+
+from pdn.motores import gpu_cuda  # noqa: E402
+from pdn.operaciones.trabajo import Trabajo, ejecutar_secuencial  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
     not gpu_cuda.simulador() and os.environ.get("PDN_GPU_REAL") != "1",

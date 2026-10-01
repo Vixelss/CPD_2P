@@ -2,10 +2,22 @@
 
 Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el historial. La especificación es `CONTEXTO.md`.
 
+## Resumen
+
+Las etapas obligatorias E0 a E10 están hechas y probadas en la nube (187 pruebas, unos 2 minutos). Lo que falta es lo que solo se puede probar en las laptops reales (sección "Pendiente de prueba en hardware") y la etapa opcional E11.
+
+## Cómo retomar en las laptops reales
+
+1. Seguir `MANUAL.md` de principio a fin (red, `cluster.yaml`, llaves, `setup_*.sh`, NFS, código, datos, verificación, lanzamiento).
+2. Correr las pruebas en cada nodo: `~/pdn-env/bin/python -m pytest -q` (en los nodos con NVIDIA, además `PDN_GPU_REAL=1 ~/pdn-env/bin/python -m pytest -q tests/test_motor_gpu.py`).
+3. Recorrer la lista "Pendiente de prueba en hardware" y anotar aquí los resultados.
+4. Generar las evidencias de la sección 11 de `MANUAL.md`.
+
 ## Entorno de desarrollo usado en la nube
 
-- Python 3.12 en `.venv/` (ignorado por Git): `python3.12 -m venv .venv && .venv/bin/pip install -r requirements/base.txt numba`.
-- Pruebas: `.venv/bin/python -m pytest -q`.
+- Python 3.12 en `.venv/` (ignorado por Git): `python3.12 -m venv .venv && .venv/bin/pip install -r requirements/base.txt numba coremltools mpi4py`.
+- OpenMPI 4.1.6 (`apt install openmpi-bin libopenmpi-dev`) y `shellcheck`.
+- Pruebas: `.venv/bin/python -m pytest -q`. Sin GPU, las de CUDA corren en el simulador de Numba (`NUMBA_ENABLE_CUDASIM=1`, lo activa `tests/conftest.py`).
 
 ## Etapas
 
@@ -21,8 +33,8 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E7 Dashboard | Hecha |
 | E8 Alta disponibilidad | Hecha |
 | E9 NPU en la Mac | Hecha (Neural Engine pendiente en la Mac) |
-| E10 Despliegue y manual | Pendiente |
-| E11 Opcionales | Pendiente |
+| E10 Despliegue y manual | Hecha |
+| E11 Opcionales | No iniciada (opcional) |
 
 ### E0. Reorganización y esqueleto
 
@@ -115,8 +127,18 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Master: la NPU queda excluida de las operaciones que no son zonas; `energia.csv` incluye operaciones estimadas y operaciones por joule.
 - Pruebas: `tests/test_npu.py` (one-hot y extracción exactas, separación de la regla por f1 y f2, modelo guardado, INT8, entrenamiento, construcción del programa Core ML, motor NPU en CPU, worker NPU en el clúster simulado).
 
+### E10. Despliegue y manual
+
+- `scripts/`: `comun.sh` (funciones compartidas), `cfg.py` (lee `cluster.yaml` desde bash), `setup_nodo.sh`, `setup_master.sh`, `setup_mac.sh`, `copiar_llaves.sh`, `montar_nfs.sh`, `desplegar_codigo.sh`, `distribuir_datos.sh`, `estado_cluster.sh`, `lanzar_cluster.sh`, `detener_cluster.sh`, `compilar_simd.sh`, `generar_hostfile.py`. Todos pasan `shellcheck`.
+- `MANUAL.md`: procedimiento completo del día (red, IPs, `cluster.yaml`, llaves, instalación, NFS, código, datos, verificación, lanzamiento, 13 corridas de evidencia, apagado, lista de verificación, problemas frecuentes). `docs/arquitectura.md` y `README.md` actualizados.
+- Probado en la nube con un `cluster.yaml` de un solo nodo: `distribuir_datos.sh`, `estado_cluster.sh`, `lanzar_cluster.sh`, una corrida por la API con `python -m pdn.cli correr` y `detener_cluster.sh`, sin procesos huérfanos. Esa prueba encontró dos errores ya corregidos: el `&` de `lanzar_cluster.sh` dejaba la sesión (SSH) abierta esperando al worker, y el `pkill -f` de `detener_cluster.sh` podía matar a su propia shell remota.
+- Worker y Master cierran ordenadamente con `SIGTERM`.
+- Pruebas: `tests/test_scripts.py` (presencia y modo estricto, `shellcheck`, `cfg.py`, `generar_hostfile.py`).
+- No se pudo probar en la nube: SSH entre máquinas, NFS real, `setup_*.sh` con `sudo` y la Mac.
+
 ## Pendiente de prueba en hardware
 
+- Scripts con SSH, NFS y `sudo` reales: `copiar_llaves.sh`, `setup_nodo.sh`, `setup_master.sh`, `setup_mac.sh`, `montar_nfs.sh`, `desplegar_codigo.sh`, `distribuir_datos.sh` con 3 GB, `lanzar_cluster.sh` con los 6 nodos.
 - GPU real en `nodo-vivanco` (RTX 4050) y `nodo-naranjo` (MX450): `PDN_GPU_REAL=1 pytest tests/test_motor_gpu.py` y `python -m herramientas.benchmark_gpu --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq --mb 1024` (rendimiento, solapamiento real con 1 y 2 streams, límite de lote en la MX450 de 2 GB).
 - Energía real: RAPL en los nodos Linux (tras `scripts/setup_nodo.sh`, que da permiso de lectura), NVML en `nodo-vivanco` y `nodo-naranjo`, `powermetrics` en `nodo-hidalgo` (regla de sudoers de `scripts/setup_mac.sh`). Verificar que `energia.csv` tenga valores y que la potencia sea razonable.
 - Caída real del Master (`nodo-vivanco`) con el respaldo en `nodo-carranza`, por red real; medir el tiempo de recuperación.

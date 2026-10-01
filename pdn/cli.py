@@ -139,6 +139,11 @@ def cmd_master(a) -> None:
 
     config = cfgmod.cargar(a.config)
     configurar("pdn.master", a.log)
+    import signal  # noqa: PLC0415
+
+    def _terminar(*_):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGTERM, _terminar)
     m = Master(config, a.puerto, a.datos, a.resultados).iniciar()
     if a.replicar_a:
         from pdn.master.respaldo import Replicador  # noqa: PLC0415

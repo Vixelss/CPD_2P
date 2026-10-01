@@ -63,6 +63,11 @@ def main(argv: list[str] | None = None) -> None:
                a.timeout_master or config["worker"]["master_timeout_s"], a.calibracion_mb,
                monitor=Monitor(dispositivo=a.dispositivo),
                reserva_gpu=int(config["worker"].get("reserva_gpu_nucleos", 1)))
+    import signal  # noqa: PLC0415
+
+    def _terminar(*_):
+        raise KeyboardInterrupt  # SIGTERM (detener_cluster.sh) cierra igual que Ctrl+C
+    signal.signal(signal.SIGTERM, _terminar)
     try:
         w.correr()
     except KeyboardInterrupt:
