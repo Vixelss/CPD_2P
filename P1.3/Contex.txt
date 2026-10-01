@@ -1,0 +1,260 @@
+CONTEXTO
+Proyecto universitario P1.3 de la materia Computacion Paralela, Distribuida
+y en la Nube (PDN). Titulo del enunciado: "P1.3 computacion CPU & GPU
+Paralela", subtitulo "CPU y GPU trabajando en paralelo".
+
+Continua al P1.2 (carpeta hermana ..\P1.2) pero es un proyecto aparte. Del
+P1.2 se heredan los dos motores de conteo y el monitor de recursos. Lo nuevo
+es el motor hibrido, que pone a las dos plataformas a procesar el MISMO
+archivo A LA VEZ con reparto dinamico, y la instrumentacion por nucleo: uso
+de cada nucleo logico del procesador y de cada multiprocesador de la tarjeta.
+
+DIFERENCIA DE FONDO CON EL P1.2
+El P1.2 medía CPU, luego GPU, y comparaba. Aqui no se comparan: colaboran.
+El archivo se reparte entre ambas mientras corren, y lo que hay que
+demostrar es que estuvieron activas simultaneamente y como se equilibro la
+carga entre ellas.
+
+MAQUINA
+  CPU  Intel i5-13420H, 8 nucleos fisicos / 12 logicos
+  GPU  NVIDIA GeForce RTX 4050 Laptop, 6140 MB VRAM, compute capability 8.9,
+       20 SMs, warp de 32, 1536 hilos por SM, 100 KB de memoria compartida
+       por SM, 65536 registros por SM
+  32 GB RAM, SSD NVMe, Windows 11, Python 3.13.3
+  Pantalla 1920x1080 fisicos al 125 por ciento, es decir 1536x864 logicos.
+  Importa para la ventana: una ventana de mas de 800 px de alto no cabe.
+
+ENTORNO INSTALADO Y PROBADO
+  numba 0.67.0, numba-cuda 0.30.4, cuda-toolkit 12.9 (wheels de pip),
+  llvmlite (viene con numba, hace falta para el ensamblador PTX),
+  nvidia-ml-py (expone el modulo pynvml), psutil 7.1.3, matplotlib 3.10.8,
+  numpy 2.3.5, pillow.
+
+DATOS DE ENTRADA
+Archivo real entregado por el profesor, NO se copia a esta carpeta:
+  ..\P1.1\GCF_000001405.40_GRCh38.p14_genomic.fna   3.11 GB
+Los recortes de prueba se generan en datos\ la primera vez que se piden.
+Se pueden reutilizar los de ..\P1.2\datos.
+
+FORMATO DEL ARCHIVO
+FASTA estandar. Cabeceras empiezan con '>' y ocupan la linea completa.
+Lineas de secuencia de 80 caracteres, es decir 81 bytes con el salto.
+Reglas de conteo, identicas a las del P1.2:
+  - Las lineas de cabecera se ignoran por completo.
+  - A C G T cuentan; minusculas cuentan igual que mayusculas.
+  - N es base desconocida: se cuenta aparte, NO es un caracter invalido.
+  - Los codigos IUPAC (RYSWKMBDHV) se cuentan aparte, NO son invalidos.
+  - Cualquier otro caracter en una linea de secuencia es INVALIDO.
+
+ARCHIVOS DEL PROYECTO
+
+  motor_cpu.py     Conteo en CPU. Heredado del P1.2 mas contar_rango(),
+                   que es la puerta por la que el hibrido le pide un tramo.
+  motor_gpu.py     Conteo en GPU con Numba CUDA. Tres kernels encadenados,
+                   mas la clase ContextoGPU, que reserva la tarjeta una vez
+                   y atiende muchos tramos, y el censo por SM.
+  motor_hibrido.py CPU y GPU a la vez sobre el mismo archivo. Es el nucleo
+                   del proyecto.
+  monitor.py       Muestreo de CPU por nucleo, RAM, GPU, VRAM y las dos
+                   temperaturas.
+  evidencias.py    Arma la matriz 6x3 que pide la rubrica.
+  benchmark.py     Comparativa de modos y barridos de procesos y de grano.
+  verificar.py     Prueba de correccion, centrada en las costuras del
+                   reparto.
+  informe.py       Genera CSV, graficas, matriz y resumen.
+  app_p13.py       Lanzador de la aplicacion grafica.
+  interfaz.py      La ventana. Va aparte del lanzador, ver mas abajo.
+  capturas.py      Captura la ventana para el informe.
+
+DECISIONES DE DISENO QUE NO SE DEBEN DESHACER
+
+1. UN MISMO ALGORITMO EN LAS DOS PLATAFORMAS
+   Los dos motores calculan un histograma completo de 256 bins y derivan de
+   ahi todos los conteos. Si la CPU usara un atajo distinto al de la GPU,
+   los tiempos no serian comparables y, peor aun en este proyecto, el
+   reparto de carga estaria repartiendo trabajos que no cuestan lo mismo.
+
+2. LAS CABECERAS SE DESCARTAN DENTRO DEL DISPOSITIVO
+   Limpiarlas en el host antes de enviar el lote seria hacer que la CPU
+   trabaje por la GPU. Consecuencia esperada: el bin del salto de linea
+   difiere entre CPU y GPU. No es un error. Comparar siempre con
+   motor_cpu.bins_significativos.
+
+3. LA COMPILACION Y EL ARRANQUE QUEDAN FUERA DE LA MEDICION
+   Numba tarda entre 0.5 y 1.2 s en compilar los kernels la primera vez, y
+   levantar doce procesos en Windows cuesta otro medio segundo. En el motor
+   hibrido eso no es solo una cuestion de limpieza: si el arranque cayera
+   dentro del cronometro, la plataforma que estuviera lista antes se
+   llevaria los primeros trozos por pura ventaja de salida y el reparto
+   medido no diria nada sobre el rendimiento de cada una. Por eso
+   contar_hibrido crea el Pool, lo calienta con tareas vacias y reserva la
+   tarjeta ANTES de arrancar el reloj, y solo entonces da la salida.
+   El coste se publica aparte, en 'preparacion_s'.
+
+4. EL REPARTO ES POR RACIONES ADAPTATIVAS, NO POR PORCENTAJES
+   Un reparto fijo obliga a saber de antemano cuanto mas rapida es una
+   plataforma que la otra, y eso depende del archivo, de la cache y de lo
+   que este haciendo el sistema. Pero tampoco basta con que cada trabajador
+   pida un trozo suelto: se midio que con doce procesos de CPU y un hilo de
+   GPU, los trece piden a la vez en el instante cero y se reparten trece
+   trozos antes de que nadie haya demostrado nada.
+   Por eso cada trabajador pide una racion cuyo tamano ajusta segun su
+   propia velocidad recien medida, apuntando a un cuarto de segundo de
+   trabajo. Todos empiezan pidiendo uno. La GPU se estabiliza pidiendo
+   raciones grandes y contiguas, que ademas es como mejor aprovecha el
+   PCIe; cada proceso de CPU se queda pidiendo de uno en uno.
+
+5. EL LANZADOR Y LA VENTANA VAN EN ARCHIVOS SEPARADOS
+   En Windows multiprocessing usa spawn y cada proceso hijo reimporta el
+   modulo principal. Medido en el P1.2: tener motor_gpu importado en el
+   modulo principal subia contar_paralelo sobre 2 MB de 1.34 s a 5.51 s.
+   Aqui el dano seria peor porque ese retraso caeria sobre la mitad de CPU
+   del motor justo mientras compite por el reparto. Por eso app_p13.py solo
+   contiene el arranque, y ni motor_hibrido.py ni verificar.py importan
+   motor_gpu en la cabecera.
+
+6. UN SOLO MONITOR DE RECURSOS A LA VEZ
+   psutil.cpu_percent con intervalo None calcula el porcentaje contra la
+   ultima llamada, y esa referencia es global al proceso. Dos monitores
+   simultaneos se la corrompen. La ventana mantiene uno vivo y se lo presta
+   a cada medicion mediante Monitor.marcar() y Monitor.resumen(desde).
+
+7. LA TEMPERATURA DEL PROCESADOR SE LEE EN UN HILO APARTE
+   La consulta al sistema cuesta del orden de medio segundo. Si estuviera
+   en el bucle principal, el muestreo bajaria de diez lecturas por segundo a
+   dos y estropearia el resto de magnitudes. Va en su propio hilo con
+   refresco cada tres segundos, que sobra: la temperatura se mueve en
+   segundos, no en decimas.
+   OJO CON LA UNIDAD: el contador de rendimiento de la zona termica entrega
+   kelvin enteros. El otro camino habitual, MSAcpi_ThermalZoneTemperature,
+   los da en decimas y ademas exige permisos de administrador. Confundirlos
+   saca temperaturas bajo cero; ya paso una vez.
+
+8. RECURSOS NO MEDIDOS SE DEJAN VACIOS, NUNCA EN CERO
+   Una corrida puede durar menos que el intervalo de muestreo. Si en ese
+   tramo no hay al menos dos muestras se devuelve None y la columna queda
+   vacia. Un cero se leeria como "no se uso", que es falso.
+
+EL CENSO POR MULTIPROCESADOR
+El kernel del histograma lleva la cuenta de cuantos bytes proceso cada SM de
+la tarjeta. Cada hilo consulta el registro especial %smid, al que no se
+llega desde Python: hay que inyectar ensamblador PTX dentro del kernel
+declarando un intrinsic de Numba (ver motor_gpu.smid). La suma al contador
+del SM se hace una sola vez por hilo, al terminar su bucle, no por byte, de
+modo que el coste sobre el tiempo medido es despreciable.
+Es lo que convierte "la GPU trabajo al 74 por ciento" en "cada uno de los 20
+SMs proceso esta cantidad de bytes", y es la respuesta al nivel mas exigente
+de la rubrica.
+
+TRAMPA YA PISADA: LA COSTURA ENTRE TROZOS
+El motor de GPU duplicaba una linea de 80 caracteres cuando un tramo
+terminaba justo en un salto de linea. El motivo: al cerrar el ultimo lote de
+un tramo llamaba a readline() sin comprobar antes si la linea habia quedado
+cortada de verdad, y readline() colocado justo despues de un salto devuelve
+la linea siguiente entera, que pertenece al tramo del vecino.
+Como los cortes caen cada 16 MB y las lineas miden 81 bytes, la coincidencia
+es rara, y ademas el fallo solo se manifestaba si el tramo que terminaba en
+salto le tocaba a la GPU y no a la CPU (la CPU si comprobaba). Resultado: el
+conteo salia mal en una corrida de cada cinco o seis, sin patron aparente.
+El motor de CPU nunca lo tuvo, y contar_gpu sobre el archivo entero tampoco,
+porque alli el unico borde es el final del archivo y readline() devuelve
+vacio.
+MORALEJA para cualquier cambio futuro en los bordes: verificar.py lanza
+varias combinaciones de procesos y de grano justamente para que las costuras
+caigan en sitios distintos cada vez. Una sola corrida correcta no prueba
+nada.
+
+RESULTADOS MEDIDOS
+
+Los conteos coinciden con los del P1.2 en todos los modos y en todas las
+configuraciones de reparto probadas.
+
+Genoma completo, 3.11 GB (cache del sistema caliente):
+  CPU paralelo x12    12.429 s     256.3 MB/s
+  GPU sola             1.474 s    2161.0 MB/s
+  Hibrido x4 + GPU     2.356 s    1352.1 MB/s   CPU 21%, a la vez 2.29 s
+  Hibrido x8 + GPU     2.925 s    1088.9 MB/s   CPU 29%, a la vez 2.76 s
+  Hibrido x12 + GPU    4.434 s     718.4 MB/s   CPU 49%, a la vez 4.02 s
+
+Recorte de 500 MB:
+  CPU x1               3.600 s     138.9 MB/s
+  CPU x12              2.222 s     225.0 MB/s
+  GPU sola             0.237 s    2109.0 MB/s
+  Hibrido x2 + GPU     0.359 s    1393.9 MB/s   CPU 13%, a la vez 0.26 s
+  Hibrido x4 + GPU     0.488 s    1024.2 MB/s   CPU 26%, a la vez 0.42 s
+  Hibrido x8 + GPU     0.721 s     693.5 MB/s   CPU 45%, a la vez 0.39 s
+
+EL RESULTADO INCOMODO, Y POR QUE NO SE MAQUILLA
+La colaboracion funciona: las dos plataformas trabajan de verdad a la vez,
+el solape se mide en segundos y el reparto se equilibra solo. Pero el
+conjunto es MAS LENTO que la GPU sola, y cuantos mas procesos de CPU se
+anaden, peor.
+
+La razon es que el problema esta limitado por la entrada y salida, no por el
+calculo: contar bytes es trivial, y la GPU sola ya satura el camino de
+lectura a unos 2100 MB/s. Los procesos de CPU no anaden capacidad de disco,
+solo compiten por la que hay, y ademas le quitan turno al unico hilo lector
+que alimenta a la tarjeta, que es el que mas rendimiento saca de cada byte
+que recibe. De ahi la escala: con dos procesos la perdida es pequena, con
+doce el conjunto va a un tercio.
+
+Esto NO es un fallo del motor ni algo que haya que esconder. Es la respuesta
+medida a la pregunta que plantea el enunciado, y es material de analisis de
+primera para el informe: poner dos unidades de computo a colaborar solo
+compensa cuando el cuello de botella esta en el computo. Aqui esta en el
+disco. Un reparto ideal no puede superar el ancho de banda del dispositivo
+mas lento de la cadena.
+Si alguna vez se quiere ver ganar al hibrido, hay que subir el coste de
+computo por byte, no tocar el reparto.
+
+Reparto dentro de la GPU: los 20 SMs reciben entre 4.7 y 5.3 por ciento de
+los bytes cada uno, frente al 5.0 que seria el reparto perfecto. La
+desviacion viene de como el grid-stride reparte los bloques entre los
+multiprocesadores, y es pequena.
+
+Ocupacion del kernel: 20 registros por hilo y 1024 B de memoria compartida
+por bloque, lo que permite 48 de los 48 warps posibles por SM, es decir el
+100 por ciento.
+
+RESTRICCIONES
+- Python. GPU con Numba CUDA (@cuda.jit), kernels escritos a mano.
+- Codigo comentado en espanol, sin tildes en los comentarios del codigo.
+- Debe funcionar en Windows (multiprocessing exige el guard
+  if __name__ == '__main__' y los scripts deben ser archivos reales, no
+  codigo pasado por la entrada estandar).
+- psutil y pynvml son opcionales: si faltan, el programa sigue funcionando
+  sin esa parte.
+- NO copiar el genoma de 3.11 GB a esta carpeta, se referencia por ruta.
+- Nunca poner valores de ejemplo en los paneles de una captura destinada al
+  informe. Si no hay dato, que se vea que no hay dato.
+
+RUBRICA (matriz de 6 criterios por 3 niveles: CPU, GPU, GPU x nucleos)
+  1. PROGRAMA        codigo de cada nivel
+  2. LIBRERIA        la que habilita cada nivel
+  3. INSTRUCCION     la que pone a trabajar cada nivel
+  4. % USO POR NUCLEO
+  5. TEMPERATURA
+  6. % USO DE RAM
+La matriz la arma evidencias.py y la publican por igual la pestana
+"Evidencias" de la aplicacion y el archivo resultados\evidencias.txt, de
+modo que el informe y el programa no pueden contradecirse.
+
+OBJETIVOS DECLARADOS DEL ENUNCIADO (van al informe, son conceptuales)
+  1. Recordar los componentes de un computador.
+  2. Diferenciar los propositos de un CPU vs GPU.
+  3. Diferenciar computador personal vs servidor empresarial.
+  4. Resumir las caracteristicas de los supercomputadores.
+  5. Resumir los propositos de los supercomputadores.
+
+CONDICIONES DE ENTREGA (paginas 3 y 4 del enunciado)
+- Informe en PDF por la plataforma EVA.
+- Arial 10, margenes normales, encabezado con el titulo, pie con autores,
+  numeracion y fecha de exposicion.
+- Estructura: caratula, resumen, desarrollo, conclusiones y
+  recomendaciones, referencias.
+- 10 por ciento de penalizacion por cada dia de retraso.
+- 1 por ciento por cada falta ortografica.
+- Hay que contrastar la solucion propia con la que propondria una IA,
+  identificar las variaciones y analizar por que existen. La defensa se
+  califica segun como se argumenten esas variaciones, asi que conviene ir
+  anotandolo sobre la marcha y no reconstruirlo al final.

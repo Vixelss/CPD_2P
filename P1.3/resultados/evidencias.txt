@@ -1,0 +1,33 @@
+MATRIZ DE EVIDENCIAS  -  P1.3 Computacion CPU & GPU Paralela
+==============================================================================
+
+CRITERIO              CPU                                  GPU                                  GPU x nucleos                       
+====================================================================================================================================
+1) PROGRAMA           motor_cpu.py                         motor_gpu.py                         motor_gpu.py -> k_histograma
+                      contar_paralelo() reparte rangos de  Tres kernels encadenados: marcar     Cada hilo acumula en memoria
+                      bytes entre procesos y               cabeceras, borrarlas dentro          compartida de su propio SM y
+                      contar_rango() cuenta uno con        de la tarjeta y calcular el          anota en que multiprocesador se
+                      numpy.bincount.                      histograma de 256 bins.              ejecuto.
+------------------------------------------------------------------------------------------------------------------------------------
+2) LIBRERIA           multiprocessing (biblioteca          numba.cuda                           numba.extending.intrinsic +
+                      estandar)                            Compila a PTX los kernels escritos   llvmlite.ir
+                      numpy para el conteo vectorizado     en Python y gestiona                 Permiten inyectar ensamblador PTX
+                      dentro de cada proceso.              memoria, streams y lanzamientos.     dentro del kernel, que es
+                                                                                                la unica via para consultar el
+                                                                                                multiprocesador en curso.
+------------------------------------------------------------------------------------------------------------------------------------
+3) INSTRUCCION        multiprocessing.Pool(processes=n)    @cuda.jit sobre la funcion del       mov.u32 $0, %smid;   (ensamblador
+                      pool.starmap_async(_trabajo_cpu,     kernel                               PTX)
+                      tareas)                              k_histograma[bloques, hilos,         cuda.atomic.add(por_sm, smid(),
+                                                           stream](datos, n, hist, por_sm)      vistos)
+------------------------------------------------------------------------------------------------------------------------------------
+4) % USO POR NUCLEO   12 nucleos logicos                   media 10.0 %                         20 SMs activos
+                      media 59.2 %, entre 40.8 % y 70.9 %  maximo 90.0 %                        media 5.00 %, entre 4.72 % y 5.28 %
+------------------------------------------------------------------------------------------------------------------------------------
+5) TEMPERATURA        media 70.1 C                         media 54.1 C
+                      maximo 87.9 C                        maximo 56 C
+------------------------------------------------------------------------------------------------------------------------------------
+6) % USO DE MEMORIA   RAM del sistema 58.8 %               VRAM 684 MB de 6140 MB (11.1 %)      20 registros por hilo
+                      programa y procesos 1919 MB                                               1024 B compartidos por bloque
+                                                                                                ocupacion 48/48 warps por SM (100 %)
+------------------------------------------------------------------------------------------------------------------------------------
