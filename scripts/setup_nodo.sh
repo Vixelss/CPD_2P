@@ -26,15 +26,25 @@ if [[ ! -x "$ENTORNO/bin/python" ]]; then
 else
     ok "ya existe"
 fi
-"$ENTORNO/bin/python" -m pip install -q --upgrade pip
-"$ENTORNO/bin/python" -m pip install -q -r "$RAIZ/requirements/base.txt"
-ok "requirements/base.txt instalado"
+# Sin internet (router local) pip falla: se sigue con lo ya instalado y se verifica
+PIP=("$ENTORNO/bin/python" -m pip install -q --timeout 10 --retries 1)
+if "${PIP[@]}" -r "$RAIZ/requirements/base.txt"; then
+    ok "requirements/base.txt instalado"
+else
+    aviso "no se pudo descargar (sin internet?): se usan los paquetes ya instalados"
+fi
 if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi >/dev/null 2>&1; then
-    "$ENTORNO/bin/python" -m pip install -q -r "$RAIZ/requirements/gpu.txt"
-    ok "GPU NVIDIA detectada: requirements/gpu.txt instalado"
+    if "${PIP[@]}" -r "$RAIZ/requirements/gpu.txt"; then
+        ok "GPU NVIDIA detectada: requirements/gpu.txt instalado"
+    else
+        aviso "no se pudo descargar requirements/gpu.txt (sin internet?)"
+    fi
 else
     aviso "sin GPU NVIDIA (o sin driver): se omite requirements/gpu.txt"
 fi
+for m in numpy psutil zmq fastapi uvicorn yaml matplotlib; do
+    if "$ENTORNO/bin/python" -c "import $m" 2>/dev/null; then ok "modulo $m"; else falla "falta el modulo $m: conectese a internet y repita"; fi
+done
 if "$ENTORNO/bin/python" -c "import mpi4py" 2>/dev/null; then
     ok "mpi4py visible desde el entorno ($("$ENTORNO/bin/python" -c 'import mpi4py; print(mpi4py.__version__)'))"
 else
