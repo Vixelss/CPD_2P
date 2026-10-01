@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clúster PDN</title>
+<link rel="stylesheet" href="/static/estilo.css">
+<script src="/static/chart.umd.min.js"></script>
+</head>
+<body>
+<header>
+  <div class="marca">Clúster genómico PDN <span class="sub">P2.3</span></div>
+  <div id="estado-master" class="estado-master">Conectando…</div>
+  <nav id="pestanas">
+    <button data-p="topologia" class="activa">Topología</button>
+    <button data-p="configuracion">Configuración</button>
+    <button data-p="ejecucion">Ejecución</button>
+    <button data-p="recursos">Recursos</button>
+    <button data-p="resultados">Resultados</button>
+    <button data-p="escalabilidad">Escalabilidad</button>
+    <button data-p="evidencias">Evidencias</button>
+    <button data-p="registro">Registro</button>
+  </nav>
+</header>
+<div id="aviso-respaldo" class="aviso oculto"></div>
+<main>
+
+<!-- 1. Topologia -->
+<section id="topologia" class="pantalla activa">
+  <div class="fila">
+    <div class="panel ancho2">
+      <h2>Diagrama de la red</h2>
+      <svg id="diagrama" viewBox="0 0 800 380" role="img" aria-label="Diagrama del clúster"></svg>
+    </div>
+    <div class="panel">
+      <h2>Resumen</h2>
+      <dl id="resumen-cluster" class="datos"></dl>
+    </div>
+  </div>
+  <h2>Nodos</h2>
+  <div id="tarjetas-nodos" class="tarjetas"></div>
+</section>
+
+<!-- 2. Configuracion -->
+<section id="configuracion" class="pantalla">
+  <form id="form-corrida" class="fila" novalidate>
+    <div class="panel">
+      <h2>Operación</h2>
+      <label>Operación
+        <select name="operacion">
+          <option value="conteo">Conteo y validación</option>
+          <option value="patrones">Búsqueda de patrones</option>
+          <option value="comparacion">Comparación de dos cadenas</option>
+          <option value="zonas">Zonas de interés (islas CpG)</option>
+        </select></label>
+      <label>Archivo <select name="archivo"></select></label>
+      <label data-op="comparacion">Archivo B <select name="archivo_b"></select></label>
+      <label data-op="patrones">Patrones (separados por comas)
+        <input name="patrones" value="TATAAA,GAATTC,GGATCC,CCGG,GATTACA" data-validar="patrones"></label>
+      <label data-op="patrones" class="check"><input type="checkbox" name="complemento" checked> Buscar también el complemento inverso</label>
+      <label data-op="comparacion">Modo de comparación
+        <select name="modo_comparacion"><option value="emparejado">Emparejado por secuencia</option>
+          <option value="posicional">Posicional</option></select></label>
+      <div class="dos" data-op="zonas">
+        <label>Ventana W <input name="ventana" type="number" value="200" min="10" max="100000"></label>
+        <label>Paso S <input name="paso" type="number" value="200" min="1" max="100000"></label>
+      </div>
+      <label>Modo
+        <select name="modo"><option value="dinamico">Dinámico (Master y workers)</option>
+          <option value="mpi">MPI (reparto estático)</option></select></label>
+      <label>Origen de los datos
+        <select name="origen_datos"><option value="local">Copia local en cada nodo</option>
+          <option value="nfs">NFS (/cluster/datos)</option></select></label>
+    </div>
+    <div class="panel ancho2">
+      <h2>Nodos y dispositivos</h2>
+      <table class="tabla" id="tabla-nodos-config">
+        <thead><tr><th>Usar</th><th>Nodo</th><th>Dispositivos</th><th>Procesos CPU</th><th>Núcleos</th>
+          <th>CPU</th><th>GPU bloques</th><th>Lote GPU (MB)</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="nota" id="nota-nodos"></p>
+    </div>
+    <div class="panel">
+      <h2>Reparto y medición</h2>
+      <label>Estrategia
+        <select name="estrategia"><option value="adaptativa">Adaptativa (raciones)</option>
+          <option value="fija">Fija</option><option value="proporcional">Proporcional a la calibración</option></select></label>
+      <label>Tiempo objetivo por tarea (s) <input name="tiempo_objetivo_s" type="number" step="0.1" value="0.5" min="0.1" max="5"></label>
+      <label>Tamaño máximo de tarea (MB) <input name="max_tarea_mb" type="number" value="128" min="4" max="2048"></label>
+      <label class="check"><input type="checkbox" name="verificar_crc" checked> Verificar integridad por CRC</label>
+      <label class="check"><input type="checkbox" name="calentamiento"> Medición justa: calentamiento descartado</label>
+      <label>Repeticiones (mediana) <input name="repeticiones" type="number" value="1" min="1" max="20"></label>
+      <div class="botones">
+        <button type="submit" class="primario">Iniciar corrida</button>
+      </div>
+      <p id="error-config" class="error"></p>
+    </div>
+  </form>
+</section>
+
+<!-- 3. Ejecucion -->
+<section id="ejecucion" class="pantalla">
+  <div class="fila">
+    <div class="panel ancho2">
+      <h2>Corrida <span id="ej-id" class="mono"></span></h2>
+      <div class="progreso"><div id="ej-barra"></div><span id="ej-porcentaje">sin corrida</span></div>
+      <dl class="datos en-linea" id="ej-datos"></dl>
+      <div class="botones">
+        <button id="btn-detener">Detener</button>
+        <select id="fallo-worker"></select>
+        <select id="fallo-modo"><option value="caida">caída</option><option value="congelado">congelado</option></select>
+        <button id="btn-fallo" class="peligro">Simular fallo</button>
+        <button id="btn-caida-master" class="peligro">Simular caída del Master</button>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>MB/s del clúster</h2>
+      <div class="caja-graf"><canvas id="graf-mbs"></canvas></div>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Línea de tiempo de tareas por worker</h2>
+    <div class="leyenda"><span class="cpu">CPU</span><span class="gpu">GPU</span><span class="npu">NPU</span>
+      <span class="reasignada">reasignada / descartada</span></div>
+    <canvas id="gantt" height="240"></canvas>
+  </div>
+  <div class="fila">
+    <div class="panel"><h2>MB/s por worker</h2><div class="caja-graf"><canvas id="graf-workers"></canvas></div></div>
+    <div class="panel ancho2"><h2>Reasignaciones y caídas</h2><div id="ej-eventos" class="eventos"></div></div>
+  </div>
+</section>
+
+<!-- 4. Recursos -->
+<section id="recursos" class="pantalla">
+  <div class="leyenda"><span class="nucleo-p">núcleo P</span><span class="nucleo-e">núcleo E</span><span class="nucleo-n">núcleo</span></div>
+  <div id="tarjetas-recursos" class="tarjetas"></div>
+  <div class="panel"><h2>Uso de CPU por worker (últimos 2 minutos)</h2><div class="caja-graf"><canvas id="graf-cpu"></canvas></div></div>
+</section>
+
+<!-- 5. Resultados -->
+<section id="resultados" class="pantalla">
+  <div class="fila lateral">
+    <div class="panel">
+      <h2>Corridas</h2>
+      <div id="lista-resultados" class="lista"></div>
+    </div>
+    <div class="panel ancho2">
+      <h2>Detalle <span id="res-id" class="mono"></span></h2>
+      <div class="botones">
+        <button data-exportar="json">Exportar JSON</button>
+        <button data-exportar="csv">Exportar CSV</button>
+        <button id="btn-png">Exportar PNG</button>
+      </div>
+      <div id="res-detalle"></div>
+      <div class="caja-graf"><canvas id="graf-res"></canvas></div>
+    </div>
+  </div>
+</section>
+
+<!-- 6. Escalabilidad -->
+<section id="escalabilidad" class="pantalla">
+  <div class="fila lateral">
+    <form id="form-escala" class="panel">
+      <h2>Serie</h2>
+      <label>Operación <select name="operacion">
+        <option value="conteo">Conteo</option><option value="patrones">Patrones</option>
+        <option value="zonas">Zonas</option></select></label>
+      <label>Archivo <select name="archivo"></select></label>
+      <label>Procesos en el nodo (lista) <input name="nucleos" value="1,2,4,8"></label>
+      <label>Repeticiones (mediana) <input name="repeticiones" type="number" value="3" min="1" max="10"></label>
+      <label class="check"><input type="checkbox" name="calentamiento" checked> Calentamiento descartado</label>
+      <label class="check"><input type="checkbox" name="solo_local" checked> Solo el nodo local (sin series 3 y 4)</label>
+      <label class="check"><input type="checkbox" name="dinamico"> Incluir el modo dinámico (serie 5)</label>
+      <div class="botones"><button type="submit" class="primario">Lanzar serie</button></div>
+      <p id="escala-estado" class="nota"></p>
+    </form>
+    <div class="panel ancho2">
+      <h2>Tiempo, speedup y eficiencia</h2>
+      <div class="graficos3"><div class="caja-graf"><canvas id="graf-esc-t"></canvas></div><div class="caja-graf"><canvas id="graf-esc-s"></canvas></div><div class="caja-graf"><canvas id="graf-esc-e"></canvas></div></div>
+      <div id="escala-amdahl"></div>
+      <div id="escala-tabla"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7. Evidencias -->
+<section id="evidencias" class="pantalla">
+  <div class="panel">
+    <h2>Matriz de evidencias de la rúbrica</h2>
+    <div class="botones"><button id="btn-evidencias">Actualizar</button><button id="btn-evidencias-md">Exportar evidencias.md</button></div>
+    <div id="tabla-evidencias"></div>
+  </div>
+</section>
+
+<!-- 8. Registro -->
+<section id="registro" class="pantalla">
+  <div class="panel">
+    <h2>Registro del sistema</h2>
+    <pre id="log" class="log"></pre>
+  </div>
+</section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

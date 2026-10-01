@@ -29,6 +29,11 @@ class MemoriaLog(logging.Handler):
 
 
 MEMORIA = MemoriaLog()
+# El registro en memoria (pantalla Registro del dashboard) siempre esta activo
+_raiz = logging.getLogger("pdn")
+_raiz.addHandler(MEMORIA)
+if _raiz.level == logging.NOTSET:
+    _raiz.setLevel(logging.INFO)
 
 
 def configurar(nombre: str = "pdn", archivo: str | None = None, nivel: int = logging.INFO) -> logging.Logger:
@@ -40,7 +45,6 @@ def configurar(nombre: str = "pdn", archivo: str | None = None, nivel: int = log
         consola = logging.StreamHandler()
         consola.setFormatter(logging.Formatter(FORMATO, "%H:%M:%S"))
         raiz.addHandler(consola)
-        raiz.addHandler(MEMORIA)
         raiz._pdn_configurado = True  # type: ignore[attr-defined]
     if archivo:
         try:

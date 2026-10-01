@@ -184,6 +184,9 @@ class Worker:
     def correr(self) -> None:
         """Bucle principal del worker."""
         self.hw = hardware.detectar(completo=True, ip_master=self.master_actual.split(":")[0])
+        nfs = os.path.dirname(self.nfs_datos.rstrip("/")) or self.nfs_datos
+        self.hw["nfs_montado"] = os.path.ismount(nfs) or os.path.ismount(self.nfs_datos)
+        self.hw["nfs_ruta"] = nfs
         gpu = self.hw.get("gpu") or {}
         if self.dispositivo == "cpu" and gpu.get("disponible") and not gpu.get("simulador") \
                 and "reservar" not in self.motor_base and self.reserva_gpu:

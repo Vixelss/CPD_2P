@@ -18,7 +18,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E4 Modo MPI y escalabilidad | Hecha |
 | E5 Motor GPU CUDA | Hecha (lógica; rendimiento pendiente en hardware) |
 | E6 Monitoreo y energía | Hecha (energía real pendiente en hardware) |
-| E7 Dashboard | Pendiente |
+| E7 Dashboard | Hecha |
 | E8 Alta disponibilidad | Pendiente |
 | E9 NPU en la Mac | Pendiente |
 | E10 Despliegue y manual | Pendiente |
@@ -86,6 +86,16 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Master: `recursos.csv` (serie por worker con `t_abs` y fase), `energia.csv` (energía por worker de los latidos y de las tareas, MB/J, potencia media), `energia_por_arquitectura` en el resumen.
 - En la nube no hay RAPL, NVML ni `powermetrics`: todo queda en `None` con su motivo, y las pruebas lo verifican.
 - Pruebas: `tests/test_monitoreo.py` (RAPL con un `sysfs` falso: acumulado, desborde, varios paquetes, sin permiso, ausente; `powermetrics`; `Monitor`; `recursos.csv` y `energia.csv` de una corrida del clúster simulado).
+
+### E7. Dashboard
+
+- `pdn/dashboard/app.py` (FastAPI): `/` (interfaz), `/ws` (estado cada 1 s), `/api/estado`, `/api/archivos`, `POST /api/corridas`, `GET /api/corridas/{id}`, `/api/corridas/actual/cancelar`, `/api/fallo`, `/api/master/caida`, `/api/resultados[/{id}[/exportar?formato=json|csv]]`, `/api/mpi`, `/api/escalabilidad`, `/api/evidencias`, `/api/evidencias/exportar`, `/api/registro`. Documentación automática en `/api/docs`.
+- `pdn/dashboard/static/`: `index.html`, `estilo.css`, `app.js` (8 pantallas: topología con diagrama SVG, configuración con validación en vivo, ejecución con Gantt y botones de fallo, recursos con barras por núcleo P/E, resultados con exportación JSON/CSV/PNG, escalabilidad con Amdahl, evidencias, registro), `chart.umd.min.js` (Chart.js 4.4.4, MIT).
+- `pdn/dashboard/cliente.py` (cliente HTTP para la CLI), `pdn/evidencias.py` (matriz de la rúbrica, `evidencias.md`).
+- Master: `validar_motor` (procesos contra hilos, núcleos inexistentes, AVX2, lote contra VRAM), `master.tam_unidad`, `hay_respaldo()`/`simular_caida()` (se completan en E8). Workers informan si `/cluster` está montado.
+- Revisado a ojo con Chromium a 1366×768 (capturas del clúster simulado en `docs/capturas/`). Sin errores de JavaScript en la consola.
+- Uso: `python -m pdn.cli master --dashboard` en el clúster, o `python -m pdn.cli sim --workers 4 --retardos 0,0.5,1,2 --mb 6 --dashboard` para la demo.
+- Pruebas: `tests/test_dashboard.py` (página y estáticos sin CDN, estado con rangos, corrida completa por API con exportación, errores 400 con mensaje claro, MPI y escalabilidad desde la API, evidencias, registro, WebSocket).
 
 ## Pendiente de prueba en hardware
 

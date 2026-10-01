@@ -23,6 +23,7 @@ import zmq
 
 from pdn.comun import config as cfgmod
 from pdn.comun import protocolo as P
+from pdn.comun import registro_log  # noqa: F401  (activa el registro en memoria)
 from pdn.comun.huellas import calcular_huellas, leer_huellas
 from pdn.master import validacion
 from pdn.master.estado import (ASIGNADA, CANCELADA, DESCARTADA, EJECUTANDO, FALLIDA, HECHA,
@@ -64,6 +65,39 @@ def resolver_archivo(archivo: str, datos: str) -> Preparado:
             return Preparado("", c, rutas["idx"], rutas["huellas"], os.path.getsize(c), True)
         return preparar(c)
     raise ErrorCorrida("No se encontro el archivo %r en %s" % (archivo, datos))
+
+
+def validar_motor(w: WorkerInfo, opciones: dict) -> str | None:
+    """Valida las opciones de motor contra el hardware que informo el worker."""
+    hw = w.hardware or {}
+    if w.dispositivo == "cpu":
+        from pdn.motores.cpu import IMPLEMENTACIONES  # noqa: PLC0415
+        from pdn.worker.hardware import elegir_nucleos  # noqa: PLC0415
+        cpu = hw.get("cpu") or {}
+        logicos = len(cpu.get("logicos") or []) or None
+        procesos = opciones.get("procesos")
+        if procesos is not None and logicos and not 1 <= int(procesos) <= logicos:
+            return "%s: se pidieron %s procesos y tiene %d hilos (1 a %d)" % (w.wid, procesos, logicos, logicos)
+        impl = opciones.get("impl", "numpy")
+        if impl not in IMPLEMENTACIONES:
+            return "%s: implementacion de CPU desconocida %r" % (w.wid, impl)
+        if impl == "simd" and cpu.get("flags") is not None and "avx2" not in cpu.get("flags", []):
+            return "%s: el procesador no tiene AVX2 (use numpy)" % w.wid
+        if cpu.get("logicos") and opciones.get("nucleos") not in (None, "", "todos"):
+            try:
+                elegir_nucleos(opciones["nucleos"], {"logicos": cpu["logicos"], "rendimiento": cpu.get("rendimiento", []),
+                                                     "eficiencia": cpu.get("eficiencia", []),
+                                                     "sin_hermanos": cpu.get("sin_hermanos", cpu["logicos"])})
+            except ValueError as e:
+                return "%s: %s" % (w.wid, e)
+    elif w.dispositivo == "gpu":
+        from pdn.motores.gpu_cuda import MotorGPU  # noqa: PLC0415
+        try:
+            m = MotorGPU(**{k: v for k, v in opciones.items() if k in MotorGPU.OPCIONES})
+            m.lote_valido((hw.get("gpu") or {}).get("vram_libre_mb"))
+        except ValueError as e:
+            return "%s: %s" % (w.wid, e)
+    return None
 
 
 class Master:
@@ -160,7 +194,8 @@ class Master:
                 raise ErrorCorrida("La comparacion necesita dos archivos (archivo_b)")
             prep_b = resolver_archivo(cfg["archivo_b"], self.datos)
         p = self.config["planificador"]
-        tam_unidad = int(cfg.get("tam_unidad") or leer_huellas(prep_a.ruta_huellas)["tam_unidad"])
+        tam_unidad = int(cfg.get("tam_unidad") or self.m.get("tam_unidad")
+                         or leer_huellas(prep_a.ruta_huellas)["tam_unidad"])
         try:
             trabajo = Trabajo(op, cfg.get("params") or {}, Indice.leer(prep_a.ruta_idx),
                               Indice.leer(prep_b.ruta_idx) if prep_b else None, tam_unidad)
@@ -224,6 +259,19 @@ class Master:
         """Instantanea del estado (copia, segura entre hilos)."""
         with self._cerrojo:
             return dict(self._instantanea)
+
+    def hay_respaldo(self) -> bool:
+        """True si hay un Master de respaldo recibiendo instantaneas (ver pdn/master/respaldo.py)."""
+        replicador = getattr(self, "replicador", None)
+        return bool(replicador is not None and replicador.conectado())
+
+    def simular_caida(self, demora: float = 0.5) -> None:
+        """Termina este proceso sin avisar (prueba de alta disponibilidad)."""
+        def _caer():
+            time.sleep(demora)
+            log.warning("Caida simulada del Master principal")
+            os._exit(1)
+        threading.Thread(target=_caer, daemon=True).start()
 
     def workers_listos(self) -> list[str]:
         return [w["wid"] for w in self.estado().get("workers", []) if w["estado"] == "conectado"]
@@ -328,6 +376,10 @@ class Master:
                 corrida.participantes.append(w.wid)
         if not corrida.participantes:
             raise ErrorCorrida("Ningun worker conectado puede participar: %s" % (corrida.excluidos or "no hay workers"))
+        errores = [e for wid in corrida.participantes
+                   if (e := validar_motor(self.workers[wid], self._opciones_motor(cfg, self.workers[wid])))]
+        if errores:
+            raise ErrorCorrida("Configuracion de motor invalida: " + "; ".join(errores))
         self.corrida = corrida
         self._fin_notificar.clear()
         # Solo se conservan las series de monitoreo de las ultimas corridas
@@ -507,10 +559,15 @@ class Master:
                 **{k: v for k, v in metricas.items() if not isinstance(v, (dict, list)) and k != "t"}}
         self.monitoreo.setdefault(c.corrida_id, []).append(fila)
 
-    def _config_worker(self, c: Corrida, w: WorkerInfo) -> dict:
-        cfg = c.config
+    @staticmethod
+    def _opciones_motor(cfg: dict, w: WorkerInfo) -> dict:
         motor = dict((cfg.get("motor") or {}).get(w.dispositivo) or {})
         motor.update(((cfg.get("motor_nodos") or {}).get(w.hostname) or {}).get(w.dispositivo) or {})
+        return motor
+
+    def _config_worker(self, c: Corrida, w: WorkerInfo) -> dict:
+        cfg = c.config
+        motor = self._opciones_motor(cfg, w)
         calib = int(float(cfg.get("calibracion_mb", self.config["worker"]["calibracion_mb"])) * MB)
         u_cal = max(1, min(c.trabajo.unidades, -(-calib // c.trabajo.tam_unidad)))
         fin_cal = min(u_cal * c.trabajo.tam_unidad, c.trabajo.largo)
@@ -922,6 +979,9 @@ class Master:
                        "velocidades": {k: v / MB for k, v in c.planificador.velocidad.items()},
                        "pendiente_bytes": c.planificador.pendiente_bytes(), "error": c.error}
         inst = {"t": ahora, "rol": self.rol, "activo_desde": self.activo_desde, "puerto": self.puerto,
+                "respaldo_conectado": self.hay_respaldo(),
+                "nodos_config": [{k: n.get(k) for k in ("hostname", "ip", "roles", "dispositivos", "sistema")}
+                                 for n in self.config.get("nodos", [])],
                 "workers": [w.publico(ahora) for w in self.workers.values()],
                 "corrida": corrida, "historial": [{k: v for k, v in h.items() if k != "resultado"}
                                                   for h in self.historial[-20:]],

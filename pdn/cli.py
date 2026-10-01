@@ -163,6 +163,11 @@ def cmd_sim(a) -> None:
     from pdn.sim.cluster import ClusterSimulado  # noqa: PLC0415
 
     configurar("pdn.sim")
+    import signal  # noqa: PLC0415
+
+    def _terminar(*_):
+        raise KeyboardInterrupt  # SIGTERM limpia igual que Ctrl+C (detiene los workers)
+    signal.signal(signal.SIGTERM, _terminar)
     carpeta = a.carpeta or os.path.join(cfgmod.RAIZ, "resultados", "sim")
     os.makedirs(carpeta, exist_ok=True)
     retardos = [float(x) for x in a.retardos.split(",")] if a.retardos else [0.0] * a.workers
@@ -187,7 +192,9 @@ def cmd_sim(a) -> None:
     cfg["archivo"] = os.path.basename(archivos[0].ruta_seq)[:-4]
     if b:
         cfg["archivo_b"] = b
-    with ClusterSimulado(archivos, retardos, carpeta=os.path.join(carpeta, "cluster"),
+    from pdn.sim.cluster import config_rapida  # noqa: PLC0415
+    config = config_rapida(tam_unidad=cfg["tam_unidad"])  # tambien para las corridas del dashboard
+    with ClusterSimulado(archivos, retardos, carpeta=os.path.join(carpeta, "cluster"), config=config,
                          procesos=a.procesos or 1, impl=a.impl or "numpy") as c:
         if a.dashboard:
             from pdn.dashboard.app import servir  # noqa: PLC0415
