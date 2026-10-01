@@ -1,0 +1,58 @@
+# Configuracion del cluster. Los dispositivos son la intencion; manda lo que cada worker detecta.
+```yaml
+red:
+  subred: 192.168.1.0/24          # se ajusta el dia de la reunion
+  puerto_tareas: 5555
+  puerto_respaldo: 5556
+  puerto_dashboard: 8000
+rutas:
+  codigo: /home/pdn/CPD_2P
+  datos: /home/pdn/pdn-datos
+  nfs: /cluster
+  entorno: /home/pdn/pdn-env
+nodos:
+  - hostname: nodo-vivanco
+    ip: 192.168.1.10
+    usuario: pdn
+    roles: [master, worker]
+    dispositivos: [cpu, gpu]
+  - hostname: nodo-carranza
+    ip: 192.168.1.11
+    usuario: pdn
+    roles: [respaldo, worker]
+    dispositivos: [cpu]
+  - hostname: nodo-ocampo
+    ip: 192.168.1.12
+    usuario: pdn
+    roles: [worker]
+    dispositivos: [cpu]
+  - hostname: nodo-naranjo
+    ip: 192.168.1.13
+    usuario: pdn
+    roles: [worker]
+    dispositivos: [cpu, gpu]
+  - hostname: nodo-palomo
+    ip: 192.168.1.14
+    usuario: pdn
+    roles: [worker]
+    dispositivos: [cpu]
+  - hostname: nodo-hidalgo
+    ip: 192.168.1.15
+    usuario: CAMBIAR             # el usuario de la Mac no es pdn
+    sistema: macos
+    roles: [worker]
+    dispositivos: [npu]
+    rutas:
+      codigo: /Users/CAMBIAR/CPD_2P
+      datos: /Users/CAMBIAR/pdn-datos
+      entorno: /Users/CAMBIAR/pdn-env
+```
+master:
+  respaldo_snapshot_s: 1.0      # cada cuanto el Master envia su estado al respaldo
+  respaldo_timeout_s: 3.0       # sin instantaneas este tiempo, el respaldo se promueve
+  latido_timeout_s: 5.0         # sin latido este tiempo, el worker se da por perdido
+planificador:
+  estrategia: adaptativa        # adaptativa | fija | proporcional
+  tiempo_objetivo_s: 0.5
+  max_tarea_mb: 128
+  max_tarea_gpu_mb: 512

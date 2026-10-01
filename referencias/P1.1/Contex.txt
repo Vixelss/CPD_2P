@@ -1,0 +1,60 @@
+CONTEXTO
+Proyecto universitario P1.1 de la materia Computación Paralela, Distribuida
+y en la Nube (PDN). Hay que procesar un archivo FASTA de ADN de ~3GB
+(genoma humano GRCh38) contando la frecuencia de A, C, G, T, comparando
+ejecución secuencial vs paralela en CPU multinúcleo.
+
+Máquina: Intel i5-13420H, 8 núcleos físicos / 12 lógicos, SSD NVMe,
+32GB RAM, Windows. Python.
+
+Ya existe en la carpeta el archivo motor_adn.py, funcionando y validado.
+NO lo reescribas desde cero: léelo primero y respétalo. Expone:
+  - detectar_nucleos() -> (fisicos, logicos)
+  - contar_secuencial(ruta) -> (dict_conteo, tiempo)
+  - contar_paralelo(ruta, n_procesos) -> (dict_conteo, tiempo)
+El dict_conteo tiene claves 'A','C','G','T'.
+
+FORMATO DEL ARCHIVO DE ENTRADA
+FASTA estándar. Cabeceras empiezan con '>'. Líneas de secuencia de 80
+caracteres. Contiene N (bases desconocidas) que NO se cuentan. Contiene
+mayúsculas y minúsculas mezcladas (soft-masking) que SÍ cuentan igual.
+
+QUÉ FALTA CONSTRUIR
+
+1) Módulo de benchmark (benchmark.py)
+   - Barrido automático con 1, 2, 4, 8 y 12 procesos sobre el mismo archivo.
+   - Para cada configuración: tiempo, speedup (t_secuencial/t_paralelo)
+     y eficiencia (speedup/n_procesos * 100).
+   - La configuración de 1 proceso es la línea base del speedup.
+   - Verificar que TODAS las configuraciones den exactamente el mismo
+     conteo; reportar si alguna difiere.
+   - Exportar los resultados a CSV.
+
+2) Interfaz gráfica (app.py) en Tkinter
+   - Botón para seleccionar el archivo FASTA.
+   - Selector del número de procesos.
+   - Botón "Procesar" (una sola configuración) y botón "Análisis completo"
+     (corre el barrido 1-2-4-8-12).
+   - Panel con el conteo de A, C, G, T y el total de bases.
+   - Panel que muestre núcleos físicos y lógicos detectados.
+   - Barra de progreso con velocidad en MB/s mientras procesa.
+   - Cuatro gráficas con matplotlib embebidas en la ventana:
+     tiempo vs procesos, tabla comparativa, speedup vs procesos,
+     eficiencia vs procesos.
+   - Botón para exportar resultados a CSV.
+   - El procesamiento debe correr en un hilo aparte para que la ventana
+     no se congele con archivos de 3GB.
+
+RESTRICCIONES
+- Solo stdlib + multiprocessing + matplotlib + psutil (psutil opcional,
+  el programa debe funcionar sin él).
+- NO usar OpenMP ni llamarlo así: en Python el mecanismo es multiprocessing.
+- NO implementar detección de caracteres inválidos, monitoreo de temperatura
+  ni uso de RAM por núcleo, ni Ley de Amdahl. Eso pertenece a otros
+  proyectos de la materia y no va aquí.
+- Código comentado en español, sin tildes en los comentarios del código.
+- Debe funcionar en Windows (ojo con el if __name__ == '__main__' que
+  multiprocessing exige ahí).
+
+ENTREGABLE
+benchmark.py y app.py funcionando, probados con un archivo pequeño primero.

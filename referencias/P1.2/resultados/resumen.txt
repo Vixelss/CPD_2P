@@ -1,0 +1,108 @@
+RESUMEN DE RESULTADOS  -  P1.2 Computacion GPU Paralela
+==============================================================
+Archivo: ../P1.1/recorte_500MB.fna
+Tamano : 500.0 MB
+
+CPU: 8 nucleos fisicos / 12 logicos
+GPU: NVIDIA GeForce RTX 4050 Laptop GPU, compute capability 8.9, 20 SMs, 6140 MB VRAM
+
+CONTEO
+  A = 146720027
+  C = 101779804
+  G = 101995518
+  T = 147187757
+  Total de bases = 497683106
+  N (desconocidas) = 20130700
+  Codigos IUPAC de ambiguedad = 15 {'B': 1, 'K': 1, 'M': 2, 'R': 3, 'W': 3, 'Y': 5}
+  Caracteres invalidos = 0 
+
+BARRIDO DE CPU
+Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+CPU x1             CPU           2.163      231.2     1.00x     100.0       si
+CPU x2             CPU           1.825      274.0     1.19x      59.2       si
+CPU x4             CPU           1.665      300.4     1.30x      32.5       si
+CPU x8             CPU           1.712      292.0     1.26x      15.8       si
+CPU x12            CPU           1.932      258.8     1.12x       9.3       si
+
+BARRIDO DE LOTE EN GPU
+Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+GPU lote 8 MB      GPU           0.174     2874.5    12.43x         -       si
+GPU lote 16 MB     GPU           0.164     3048.1    13.19x         -       si
+GPU lote 32 MB     GPU           0.160     3131.2    13.54x         -       si
+GPU lote 64 MB     GPU           0.154     3239.6    14.01x         -       si
+GPU lote 128 MB    GPU           0.149     3350.7    14.49x         -       si
+GPU lote 256 MB    GPU           0.165     3037.9    13.14x         -       si
+
+ESCALABILIDAD
+Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+50 MB              CPU x1        0.218      229.6         -         -       si
+50 MB              CPU x12       0.772       64.8     0.28x         -       si
+50 MB              GPU           0.020     2543.6    11.08x         -       si
+200 MB             CPU x1        0.860      232.6         -         -       si
+200 MB             CPU x12       1.097      182.3     0.78x         -       si
+200 MB             GPU           0.076     2645.3    11.37x         -       si
+500 MB             CPU x1        2.199      227.4         -         -       si
+500 MB             CPU x12       1.945      257.0     1.13x         -       si
+500 MB             GPU           0.188     2659.8    11.70x         -       si
+
+GPU DISCRETA FRENTE A INTEGRADA
+Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+CUDA RTX 4050      GPU           0.162     3083.7    13.34x         -       si
+OpenCL RTX 4050    GPU           0.239     2089.9     9.04x         -       si
+OpenCL Intel UHD Gfx GPU           0.270     1849.6     8.00x         -       si
+
+ESCENARIOS DE ERROR
+Configuracion      Plat.      Tiempo s       MB/s   Speedup   Efic. %       OK
+------------------------------------------------------------------------------
+letras (CPU)       CPU           0.827       60.4         -         -       si
+letras (GPU)       GPU           0.022     2261.6         -         -       si
+digitos (CPU)      CPU           0.764       65.4         -         -       si
+digitos (GPU)      GPU           0.019     2565.4         -         -       si
+simbolos (CPU)     CPU           0.776       64.5         -         -       si
+simbolos (GPU)     GPU           0.020     2484.4         -         -       si
+espacios (CPU)     CPU           0.784       63.8         -         -       si
+espacios (GPU)     GPU           0.027     1862.4         -         -       si
+mixto (CPU)        CPU           0.750       66.7         -         -       si
+mixto (GPU)        GPU           0.038     1310.4         -         -       si
+
+DETALLE DE LAS UNIDADES DE COMPUTO
+  NVIDIA GeForce RTX 4050 Laptop GPU CUDA     discreta   20 unidades     0.162 s    3083.7 MB/s
+  NVIDIA GeForce RTX 4050 Laptop GPU OpenCL   discreta   20 unidades     0.239 s    2089.9 MB/s
+  Intel(R) UHD Graphics      OpenCL   integrada  48 unidades     0.270 s    1849.6 MB/s
+  Con el mismo kernel OpenCL, la discreta fue 1.13x mas rapida que la integrada.
+
+VELOCIDAD DE IDENTIFICACION DE ERRORES
+  letras (CPU)         CPU    10425 de  10425 errores          12,602 por segundo
+  letras (GPU)         GPU    10425 de  10425 errores         471,551 por segundo
+  digitos (CPU)        CPU    10425 de  10425 errores          13,642 por segundo
+  digitos (GPU)        GPU    10425 de  10425 errores         534,890 por segundo
+  simbolos (CPU)       CPU    10425 de  10425 errores          13,440 por segundo
+  simbolos (GPU)       GPU    10425 de  10425 errores         518,005 por segundo
+  espacios (CPU)       CPU    10425 de  10425 errores          13,301 por segundo
+  espacios (GPU)       GPU    10425 de  10425 errores         388,314 por segundo
+  mixto (CPU)          CPU    10425 de  10425 errores          13,898 por segundo
+  mixto (GPU)          GPU    10425 de  10425 errores         273,225 por segundo
+  Escenarios correctos: 10 de 10
+
+USO DE RECURSOS POR CONFIGURACION
+  CPU x1           CPU  20.38 %  GPU    0.0 %  RAM proceso    127 MB  VRAM    221 MB    50 C
+  CPU x2           CPU  33.41 %  GPU    0.0 %  RAM proceso    281 MB  VRAM    221 MB    50 C
+  CPU x4           CPU  51.94 %  GPU    0.0 %  RAM proceso    504 MB  VRAM    221 MB    51 C
+  CPU x8           CPU  78.46 %  GPU    0.0 %  RAM proceso    766 MB  VRAM    221 MB    51 C
+  CPU x12          CPU  90.53 %  GPU    0.0 %  RAM proceso   1270 MB  VRAM    221 MB    52 C
+  GPU lote 8 MB    CPU  14.45 %  GPU    0.0 %  RAM proceso    310 MB  VRAM    335 MB    53 C
+  GPU lote 16 MB   CPU   10.6 %  GPU    0.0 %  RAM proceso    334 MB  VRAM    359 MB    53 C
+  GPU lote 32 MB   CPU   16.5 %  GPU   34.0 %  RAM proceso    358 MB  VRAM    383 MB    54 C
+  GPU lote 64 MB   CPU   7.55 %  GPU   34.0 %  RAM proceso    486 MB  VRAM    527 MB    54 C
+  GPU lote 128 MB  CPU    7.8 %  GPU   28.0 %  RAM proceso    614 MB  VRAM    655 MB    55 C
+  GPU lote 256 MB  CPU  18.33 %  GPU   22.0 %  RAM proceso    934 MB  VRAM    959 MB    55 C
+
+COMPARATIVA FINAL
+  Mejor CPU : CPU x4 en 1.665 s (300.4 MB/s)
+  Mejor GPU : GPU lote 128 MB en 0.149 s (3350.7 MB/s)
+  La GPU fue 11.16x mas rapida que la mejor CPU
+  La GPU fue 14.50x mas rapida que la CPU secuencial

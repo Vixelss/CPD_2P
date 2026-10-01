@@ -1,0 +1,28 @@
+# Datos de ADN: nunca al repositorio
+datos/
+pdn-datos/
+*.fna
+*.fa
+*.fasta
+*.seq
+*.idx
+*.origen
+*.huellas
+referencias/P1.1/ManuSporny-genome_*.txt
+referencias/P1.1/H1N5_*.csv
+
+# Binarios de Windows
+vendor/
+
+# Generados
+__pycache__/
+*.pyc
+.venv/
+pdn-env/
+*.so
+build/
+resultados/*
+!resultados/.gitkeep
+*.zip
+.pytest_cache/
+hostfile

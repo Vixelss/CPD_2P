@@ -1,0 +1,2 @@
+numba-cuda[cu12]
+nvidia-ml-py
