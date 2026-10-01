@@ -342,6 +342,9 @@ class Master:
         permitidos = dispositivos.get(w.hostname)
         if permitidos is not None and w.dispositivo not in permitidos:
             return "dispositivo no seleccionado"
+        solo = cfg.get("solo_dispositivos")
+        if solo and w.dispositivo not in solo:
+            return "dispositivo %s fuera de la serie" % w.dispositivo
         if cfg.get("origen_datos", "local") == "local":
             for clave in ("a", "b"):
                 nombre = cfg.get("nombre_" + clave)
@@ -812,6 +815,8 @@ class Master:
                         energia=self._energia(c))
             except OSError as e:
                 log.error("No se pudieron guardar los resultados: %s", e)
+        if estado == TERMINADA:
+            self._guardar_velocidades(c, resumen)
         resumen["resultado"] = c.resultado
         self.historial.append(resumen)
         self.historial = self.historial[-50:]
@@ -821,6 +826,25 @@ class Master:
             (c.validacion or {}).get("valido")))
         for futuro in self._esperas.pop(c.corrida_id, []):
             futuro.set_result(resumen)
+
+    def _guardar_velocidades(self, c: Corrida, resumen: dict) -> None:
+        """Guarda MB/s por proceso de CPU de cada nodo (para el reparto proporcional de MPI)."""
+        import json  # noqa: PLC0415
+        ruta = os.path.join(self.carpeta_resultados, "velocidades.json")
+        try:
+            datos = json.load(open(ruta, encoding="utf-8")) if os.path.exists(ruta) else {}
+        except (OSError, ValueError):
+            datos = {}
+        por_op = datos.setdefault(c.config["operacion"], {})
+        for p in resumen["por_worker"]:
+            if p["dispositivo"] == "cpu" and p["mb_s_final"]:
+                procesos = (p.get("motor") or {}).get("procesos") or 1
+                por_op[p["worker"].split(":")[0]] = round(p["mb_s_final"] / procesos, 3)
+        try:
+            with open(ruta, "w", encoding="utf-8") as f:
+                json.dump(datos, f, indent=1)
+        except OSError as e:
+            log.warning("No se pudieron guardar las velocidades: %s", e)
 
     def _energia(self, c: Corrida) -> list[dict] | None:
         # Se completa en la etapa de monitoreo; aqui no se inventan valores

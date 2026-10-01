@@ -7,6 +7,11 @@ import heapq
 import numpy as np
 
 TOPE_POSICIONES = 1000
+# Tamano maximo de cada subtramo que se procesa de una vez. Acota la memoria
+# temporal de numpy (bincount pasa a int64, zonas usa sumas acumuladas int64):
+# sin esto, un tramo de 64 MB pedia 0,5 GB en conteo y 2 GB en zonas.
+SUBTRAMO = 4 * 1024 * 1024
+SUBTRAMO_ZONAS = 1024 * 1024
 
 
 def primeras(lista: list, k: int, clave=None) -> list:
@@ -51,3 +56,9 @@ def tramos_de_registro(inicio: int, fin_datos: int, limites: list[list[int]],
         if b > a:
             tramos.append((idx, a, b))
     return tramos
+
+
+def subtramos(inicio: int, fin: int, limite: int = SUBTRAMO):
+    """Parte [inicio, fin) en rangos de a lo sumo 'limite' bytes."""
+    for a in range(inicio, fin, max(1, limite)):
+        yield a, min(a + limite, fin)

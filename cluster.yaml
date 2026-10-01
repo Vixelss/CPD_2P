@@ -1,5 +1,4 @@
 # Configuracion del cluster. Los dispositivos son la intencion; manda lo que cada worker detecta.
-```yaml
 red:
   subred: 192.168.1.0/24          # se ajusta el dia de la reunion
   puerto_tareas: 5555
@@ -16,26 +15,31 @@ nodos:
     usuario: pdn
     roles: [master, worker]
     dispositivos: [cpu, gpu]
+    slots: 12                      # hilos para MPI
   - hostname: nodo-carranza
     ip: 192.168.1.11
     usuario: pdn
     roles: [respaldo, worker]
     dispositivos: [cpu]
+    slots: 16                      # hilos para MPI
   - hostname: nodo-ocampo
     ip: 192.168.1.12
     usuario: pdn
     roles: [worker]
     dispositivos: [cpu]
+    slots: 16                      # hilos para MPI
   - hostname: nodo-naranjo
     ip: 192.168.1.13
     usuario: pdn
     roles: [worker]
     dispositivos: [cpu, gpu]
+    slots: 8                      # hilos para MPI
   - hostname: nodo-palomo
     ip: 192.168.1.14
     usuario: pdn
     roles: [worker]
     dispositivos: [cpu]
+    slots: 8                      # hilos para MPI
   - hostname: nodo-hidalgo
     ip: 192.168.1.15
     usuario: CAMBIAR             # el usuario de la Mac no es pdn
@@ -46,7 +50,6 @@ nodos:
       codigo: /Users/CAMBIAR/CPD_2P
       datos: /Users/CAMBIAR/pdn-datos
       entorno: /Users/CAMBIAR/pdn-env
-```
 master:
   respaldo_snapshot_s: 1.0      # cada cuanto el Master envia su estado al respaldo
   respaldo_timeout_s: 3.0       # sin instantaneas este tiempo, el respaldo se promueve

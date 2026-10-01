@@ -15,7 +15,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E1 Datos y operaciones de referencia | Hecha |
 | E2 Motor CPU y núcleo SIMD | Hecha |
 | E3 Master, workers y clúster simulado | Hecha |
-| E4 Modo MPI y escalabilidad | Pendiente |
+| E4 Modo MPI y escalabilidad | Hecha |
 | E5 Motor GPU CUDA | Pendiente |
 | E6 Monitoreo y energía | Pendiente |
 | E7 Dashboard | Pendiente |
@@ -59,10 +59,21 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Pruebas: `tests/test_planificador.py`, `tests/test_cluster_simulado.py` (resultado exacto de las 4 operaciones distribuidas; el nodo rápido procesa más y el ocioso final es < 0,5 s; 20 combinaciones de unidad y tiempo objetivo con 3 y 5 workers; caída y congelado a mitad de corrida; SIGKILL; copia con un byte cambiado rechazada por CRC y nodo marcado sospechoso; copia con huella global distinta excluida; persistencia; errores de configuración). Se corrieron 3 veces seguidas sin fallos.
 - Demo: `python -m pdn.cli sim --workers 4 --retardos 0,0.2,0.5,1 --operacion patrones --mb 4`.
 
+### E4. Modo MPI, referencia secuencial y escalabilidad
+
+- `pdn/mpi/reparto.py` (iguales o proporcional), `mpi_correr.py` (programa por rank: `scatter` del reparto, `Barrier` + `MPI.Wtime`, `Reduce` con `MPI.SUM` del histograma, `gather` del resto, validación contra la referencia), `lanzador.py` (`mpirun --map-by core --bind-to core --report-bindings --mca btl_tcp_if_include ...`, guarda `bindings.txt` como evidencia), `referencia.py` (T₁ con un núcleo), `escalabilidad.py` (series 1 a 5, CSV, `amdahl.json`, `escalabilidad.png`).
+- `scripts/generar_hostfile.py` (lee `slots` de cada nodo en `cluster.yaml`; `--max-slots 1` y `--nodos N` para las series).
+- CLI: `python -m pdn.cli referencia ...`, `python -m pdn.cli correr --modo mpi --np 8 --hostfile hostfile [--reparto proporcional]`, `python -m pdn.mpi.escalabilidad --archivo X [--solo-local]`.
+- Se corrigió `cluster.yaml`: en E0 había quedado con las marcas de bloque de código de Markdown y no se podía leer. Hay una prueba que lo verifica.
+- Hallazgo de rendimiento (ver decisión 26): las operaciones ahora procesan por subtramos para acotar la memoria temporal de numpy.
+- En la nube (OpenMPI 4.1.6 instalado con apt, `mpi4py` con pip, 4 núcleos, 64 MiB sintéticos, mediana de 3 con calentamiento): conteo T₁ = 0,36 s, speedup 1,89 con 2 y 3,42 con 4 (s de Amdahl = 0,057); patrones 3,48 con 4; zonas 3,52 con 4 (s = 0,043).
+- Pruebas: `tests/test_mpi.py` (reparto, ajuste de Amdahl, referencia + validación del Master, `mpirun -np 1/2/4` local igual a la referencia en conteo, patrones y zonas, comparación con SIMD, reparto proporcional, serie de escalabilidad con CSV y PNG, comando del lanzador).
+
 ## Pendiente de prueba en hardware
 
 - Afinidad con núcleos P y E reales en el i5-13420H de `nodo-vivanco` (en la nube no hay CPU híbrida; la lógica se probó con una topología simulada).
 - Benchmark SIMD en cada laptop (`python -m herramientas.benchmark_simd --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq`).
+- MPI multinodo con el hostfile real: `scripts/generar_hostfile.py` y luego `python -m pdn.mpi.escalabilidad --archivo GCF_000001405.40_GRCh38.p14_genomic --repeticiones 3 --calentamiento` (series 3 y 4 solo se pueden correr con las laptops).
 - Valores de aceptación de las secciones 8.1 y 8.3 sobre los genomas reales (`GCF_000001405.40` y `GCA_000001405.29`): conteo exacto, 701 parejas, 0 diferencias emparejado, 1.072.801.765 posicional.
 
 ## Preguntas abiertas para el profesor

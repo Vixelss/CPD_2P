@@ -76,3 +76,14 @@ def carpeta_resultados(config: dict) -> str:
     local = os.path.join(RAIZ, "resultados")
     os.makedirs(local, exist_ok=True)
     return local
+
+
+def carpeta_referencias(config: dict) -> str:
+    """Carpeta de resultados de referencia: hermana de la de resultados."""
+    return os.path.join(os.path.dirname(carpeta_resultados(config).rstrip("/")), "referencias_resultados")
+
+
+def nodos_mpi(config: dict) -> list[dict]:
+    """Nodos Linux con rol master o worker (la Mac no participa en MPI), en orden."""
+    return [n for n in config.get("nodos", []) if n.get("sistema", "linux") == "linux"
+            and ({"master", "worker"} & set(n.get("roles", [])))]

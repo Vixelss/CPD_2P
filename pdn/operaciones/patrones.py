@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 
 from pdn.comun.formato import complemento_inverso
-from pdn.operaciones.comun import TOPE_POSICIONES, primeras, registro_de
+from pdn.operaciones.comun import SUBTRAMO, TOPE_POSICIONES, primeras, registro_de, subtramos
 from pdn.operaciones.nucleo import NUMPY
 
 NOMBRE = "patrones"
@@ -73,7 +73,15 @@ def mascara_costuras(n: int, inicio: int, fin: int, largo: int,
 
 def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
              limites: list[list[int]], nucleo=None) -> dict:
-    """Busca los patrones que empiezan en [inicio, fin) del .seq."""
+    """Busca los patrones que empiezan en [inicio, fin) del .seq (por subtramos)."""
+    total = vacio(params)
+    for a, b in subtramos(inicio, fin, SUBTRAMO):
+        total = combinar(total, _procesar(seq, a, b, params, limites, nucleo), params)
+    return total
+
+
+def _procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
+              limites: list[list[int]], nucleo=None) -> dict:
     nucleo = nucleo or NUMPY
     total = seq.shape[0]
     fin_datos = min(fin + solape(params), total)

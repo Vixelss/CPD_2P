@@ -21,8 +21,12 @@ class NucleoNumpy:
     nombre = "numpy"
 
     def histograma(self, datos: np.ndarray) -> np.ndarray:
-        """Histograma de 256 casillas (int64)."""
-        return np.bincount(np.asarray(datos, dtype=np.uint8), minlength=256).astype(np.int64)
+        """Histograma de 256 casillas (int64), por trozos de 1 MB (bincount pasa a int64)."""
+        datos = np.asarray(datos, dtype=np.uint8)
+        hist = np.zeros(256, dtype=np.int64)
+        for a in range(0, datos.shape[0], 1 << 20):
+            hist += np.bincount(datos[a:a + (1 << 20)], minlength=256)
+        return hist
 
     def coincidencias(self, mayus: np.ndarray, patron: str) -> np.ndarray:
         """Mascara booleana (largo n - m + 1) de inicios del patron en datos en mayuscula."""

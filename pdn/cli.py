@@ -217,8 +217,10 @@ def cmd_referencia(a) -> None:
     from pdn.mpi.referencia import correr_referencia  # noqa: PLC0415
 
     config = cfgmod.cargar(a.config)
-    r = correr_referencia(_config_corrida(a), a.datos or config["rutas"]["datos"], a.salida)
-    print(json.dumps({k: v for k, v in r.items() if k != "clave"}, indent=1, ensure_ascii=False))
+    r = correr_referencia(_config_corrida(a), a.datos or config["rutas"]["datos"],
+                          a.salida or cfgmod.carpeta_referencias(config), a.repeticiones, a.calentamiento)
+    print(json.dumps({k: v for k, v in r.items() if k not in ("clave", "resultado")}, indent=1,
+                     ensure_ascii=False))
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -260,11 +262,16 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--timeout", type=float, default=3600)
     sp.add_argument("--hostfile", default="hostfile")
     sp.add_argument("--np", type=int)
+    sp.add_argument("--reparto", default="iguales", choices=["iguales", "proporcional"],
+                    help="modo MPI: partes iguales o proporcionales a velocidades.json")
+    sp.add_argument("--precalentar", action="store_true", help="modo MPI: mapear el tramo antes del reloj")
     _args_corrida(sp)
     sp.set_defaults(func=cmd_correr)
 
     sp = sub.add_parser("referencia", help="corrida secuencial de referencia (1 proceso, 1 nucleo)")
     sp.add_argument("--config")
+    sp.add_argument("--repeticiones", type=int, default=1)
+    sp.add_argument("--calentamiento", action="store_true")
     sp.add_argument("--datos")
     sp.add_argument("--salida", help="carpeta de referencias_resultados")
     _args_corrida(sp)

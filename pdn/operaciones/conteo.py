@@ -9,7 +9,7 @@ from __future__ import annotations
 import numpy as np
 
 from pdn.comun.formato import CLASE_INVALIDO, TABLA_CLASES, nombre_byte, resumir_histograma
-from pdn.operaciones.comun import primeras
+from pdn.operaciones.comun import SUBTRAMO, primeras, subtramos
 from pdn.operaciones.nucleo import NUMPY
 
 NOMBRE = "conteo"
@@ -33,7 +33,7 @@ def solape(params: dict) -> int:
 
 def histograma(datos: np.ndarray) -> np.ndarray:
     """Histograma de 256 casillas (int64) de un arreglo uint8."""
-    return np.bincount(np.asarray(datos, dtype=np.uint8), minlength=256).astype(np.int64)
+    return NUMPY.histograma(datos)
 
 
 def posiciones_invalidos(datos: np.ndarray, desplazamiento: int, k: int) -> list[list[int]]:
@@ -47,6 +47,13 @@ def posiciones_invalidos(datos: np.ndarray, desplazamiento: int, k: int) -> list
 def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
              limites: list[list[int]] | None = None, nucleo=None) -> dict:
     """Procesa el tramo [inicio, fin) del .seq y devuelve el resultado parcial."""
+    total = vacio(params)
+    for a, b in subtramos(inicio, fin, SUBTRAMO):
+        total = combinar(total, _procesar(seq, a, b, params, nucleo), params)
+    return total
+
+
+def _procesar(seq: np.ndarray, inicio: int, fin: int, params: dict, nucleo=None) -> dict:
     datos = np.asarray(seq[inicio:fin])
     hist = (nucleo or NUMPY).histograma(datos)
     parcial = {"hist": hist.tolist(), "invalidos_pos": []}

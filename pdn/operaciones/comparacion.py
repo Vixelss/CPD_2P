@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from pdn.operaciones.comun import TOPE_POSICIONES, primeras
+from pdn.operaciones.comun import SUBTRAMO, TOPE_POSICIONES, primeras
 from pdn.operaciones.nucleo import NUMPY, clasificar
 from pdn.preparacion.emparejar import Pareja, emparejar
 from pdn.preparacion.indice import Indice
@@ -92,7 +92,11 @@ def procesar(seq_a: np.ndarray, seq_b: np.ndarray, segmentos: list[list[int]],
     nucleo = nucleo or NUMPY
     tope = params["tope"]
     parcial = vacio(params)
+    trozos = []
     for pid, ia, ib, largo in segmentos:
+        for d in range(0, largo, SUBTRAMO):
+            trozos.append((pid, ia + d, ib + d, min(SUBTRAMO, largo - d)))
+    for pid, ia, ib, largo in trozos:
         a = np.asarray(seq_a[ia:ia + largo])
         b = np.asarray(seq_b[ib:ib + largo])
         cuentas = list(nucleo.contar_categorias(a, b))

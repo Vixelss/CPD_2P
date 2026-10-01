@@ -16,7 +16,8 @@ from __future__ import annotations
 import numpy as np
 
 from pdn.comun.formato import ES_ACGT
-from pdn.operaciones.comun import TOPE_POSICIONES, primeras, tramos_de_registro
+from pdn.operaciones.comun import (SUBTRAMO_ZONAS, TOPE_POSICIONES, primeras, subtramos,
+                                   tramos_de_registro)
 
 NOMBRE = "zonas"
 _C, _G = ord("C"), ord("G")
@@ -125,10 +126,13 @@ def armar_parcial(car: dict, positivas: np.ndarray, prob: np.ndarray | None, par
 
 def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
              limites: list[list[int]], nucleo=None) -> dict:
-    """Evalua con la regla las ventanas que empiezan en [inicio, fin)."""
-    car = caracteristicas(seq, inicio, fin, params, limites)
-    positivas = es_positiva(car["n_c"], car["n_g"], car["n_cg"], params["ventana"])
-    return armar_parcial(car, positivas, None, params)
+    """Evalua con la regla las ventanas que empiezan en [inicio, fin) (por subtramos)."""
+    total = vacio(params)
+    for a, b in subtramos(inicio, fin, SUBTRAMO_ZONAS):
+        car = caracteristicas(seq, a, b, params, limites)
+        positivas = es_positiva(car["n_c"], car["n_g"], car["n_cg"], params["ventana"])
+        total = combinar(total, armar_parcial(car, positivas, None, params), params)
+    return total
 
 
 def vacio(params: dict) -> dict:
