@@ -398,6 +398,8 @@ class Master:
         permitidos = dispositivos.get(w.hostname)
         if permitidos is not None and w.dispositivo not in permitidos:
             return "dispositivo no seleccionado"
+        if w.dispositivo == "npu" and cfg.get("operacion") != "zonas":
+            return "la NPU solo ejecuta zonas de interes"
         solo = cfg.get("solo_dispositivos")
         if solo and w.dispositivo not in solo:
             return "dispositivo %s fuera de la serie" % w.dispositivo
@@ -936,7 +938,9 @@ class Master:
             nbytes = sum(t.nbytes for t in hechas)
             segundos = (dentro[-1]["t_abs"] - dentro[0]["t_abs"]) if len(dentro) >= 2 else None
             base = energia if energia is not None else e_tareas
+            ops = sum(t.info.get("ops_estimadas") or 0 for t in hechas) or None
             filas.append({"worker": wid, "dispositivo": w.dispositivo, "fuente": self.FUENTE_ENERGIA[clave],
+                          "ops_estimadas": ops, "ops_por_j": (ops / base) if (ops and base) else None,
                           "energia_j": None if energia is None else round(energia, 3),
                           "energia_tareas_j": None if e_tareas is None else round(e_tareas, 3),
                           "bytes": nbytes, "mb_por_j": (nbytes / 1048576 / base) if base else None,

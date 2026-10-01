@@ -1,2 +1,3 @@
+# Mac con Apple Silicon (nodo-hidalgo): Core ML para ejecutar el modelo en el Neural Engine.
+# coremltools tambien se instala en Linux para construir y exportar el modelo (no para ejecutarlo).
 coremltools>=8
-torch

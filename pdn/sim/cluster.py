@@ -102,10 +102,12 @@ class ClusterSimulado:
         cmd += extra or []
         entorno = dict(os.environ, PYTHONPATH=RAIZ + os.pathsep + os.environ.get("PYTHONPATH", ""))
         salida = open(os.path.join(self.carpeta, nombre + ".salida"), "w")
-        self.procs[nombre + ":cpu"] = subprocess.Popen(cmd, cwd=RAIZ, env=entorno, stdout=salida,
-                                                       stderr=subprocess.STDOUT)
-        self.nombres.append(nombre + ":cpu")
-        return nombre + ":cpu"
+        extra = extra or []
+        dispositivo = extra[extra.index("--dispositivo") + 1] if "--dispositivo" in extra else "cpu"
+        wid = "%s:%s" % (nombre, dispositivo)
+        self.procs[wid] = subprocess.Popen(cmd, cwd=RAIZ, env=entorno, stdout=salida, stderr=subprocess.STDOUT)
+        self.nombres.append(wid)
+        return wid
 
     def __enter__(self) -> "ClusterSimulado":
         if self.iniciar_master:

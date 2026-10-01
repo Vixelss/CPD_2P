@@ -4,3 +4,7 @@
 *.png binary
 *.onnx binary
 *.mlpackage binary
+*.mlpackage/** binary
+*.mlmodel binary
+*.bin binary
+*.npz binary

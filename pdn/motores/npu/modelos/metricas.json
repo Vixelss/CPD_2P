@@ -1,0 +1,163 @@
+{
+ "ventana": 200,
+ "fecha": "2026-10-01 21:06:13",
+ "host": "vm",
+ "entrenamiento": {
+  "muestras": 200000,
+  "epocas": 4000,
+  "acierto_entrenamiento": 0.999875,
+  "perdidas": [
+   0.02568941004574299,
+   0.013146418146789074,
+   0.008350644260644913,
+   0.005726129747927189,
+   0.004138090647757053,
+   0.0031278785318136215,
+   0.0024576711002737284,
+   0.0019911397248506546
+  ],
+  "segundos": 58.0
+ },
+ "arquitectura": "one-hot [L,4,W] -> conv fijas (n_C, n_G, n_CG) -> f1, f2 -> densa 2-8-1 (ReLU, sigmoide)",
+ "parametros_entrenados": 33,
+ "operaciones_por_ventana": 1668,
+ "bytes_pesos_fp32": 132,
+ "bytes_pesos_int8": 49,
+ "evaluacion": {
+  "frontera_sintetica": {
+   "descripcion": "conteos sinteticos concentrados cerca de la frontera de la regla (caso dificil)",
+   "fp32_vs_regla": {
+    "iguales": 99991,
+    "total": 100000,
+    "concordancia": 0.99991,
+    "desacuerdos": 9
+   },
+   "int8_vs_regla": {
+    "iguales": 99986,
+    "total": 100000,
+    "concordancia": 0.99986,
+    "desacuerdos": 14
+   },
+   "int8_vs_fp32": {
+    "iguales": 99995,
+    "total": 100000,
+    "concordancia": 0.99995,
+    "desacuerdos": 5
+   },
+   "positivas_regla": 24678,
+   "ejemplos_desacuerdo_fp32": [
+    {
+     "n_c": 50,
+     "n_g": 80,
+     "n_cg": 12,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 60
+    },
+    {
+     "n_c": 50,
+     "n_g": 60,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 50,
+     "n_g": 60,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 50,
+     "n_g": 60,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 50,
+     "n_g": 60,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 60,
+     "n_g": 50,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 60,
+     "n_g": 50,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 60,
+     "n_g": 50,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    },
+    {
+     "n_c": 50,
+     "n_g": 60,
+     "n_cg": 9,
+     "regla": false,
+     "10_ncg_w_menos_6_nc_ng": 0,
+     "2_ncg_mas_ng_menos_w": 20
+    }
+   ],
+   "nota": "los desacuerdos son empates o casi empates de la regla (obs/esp = 0,6): la diferencia relativa entre enteros vecinos es del orden de 1e-5, menor que la precision de un clasificador entrenado"
+  },
+  "ventanas_reales": {
+   "archivo": "npu.seq",
+   "ventanas": 50000,
+   "fp32_vs_regla": {
+    "iguales": 49999,
+    "total": 50000,
+    "concordancia": 0.99998,
+    "desacuerdos": 1
+   },
+   "int8_vs_regla": {
+    "iguales": 49999,
+    "total": 50000,
+    "concordancia": 0.99998,
+    "desacuerdos": 1
+   },
+   "int8_vs_fp32": {
+    "iguales": 50000,
+    "total": 50000,
+    "concordancia": 1.0,
+    "desacuerdos": 0
+   },
+   "positivas_regla": 23467
+  }
+ },
+ "coreml": {
+  "coremltools": "9.0",
+  "lote": 1024,
+  "ops_cuantizacion": {
+   "constexpr_affine_dequantize": 4
+  },
+  "exportado": true,
+  "fp16": "cpg_w200_fp16.mlpackage",
+  "int8": "cpg_w200_int8.mlpackage",
+  "bytes_fp16": 10589,
+  "bytes_int8": 10935,
+  "pesos_int8": "las dos convoluciones y las dos capas densas en INT8 (constexpr_affine_dequantize); sesgos en fp16; el calculo en el Neural Engine es fp16",
+  "nota_tamano": "el modelo tiene 33 parametros entrenados: el paquete lo ocupan los metadatos y la cuantizacion casi no cambia su tamano; su efecto se mide en concordancia y energia",
+  "activaciones_int8": "pendiente: linear_quantize_activations necesita ejecutar el modelo (solo en macOS)"
+ }
+}

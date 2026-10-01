@@ -62,14 +62,13 @@ def inicios_ventanas(reg_ini: int, reg_fin: int, inicio: int, fin: int, w: int, 
     return reg_ini + s * np.arange(k0, k1 + 1, dtype=np.int64)
 
 
-def caracteristicas(seq: np.ndarray, inicio: int, fin: int, params: dict,
-                    limites: list[list[int]], nucleo=None) -> dict:
-    """Calcula por ventana: inicio global, registro, evaluable, n_C, n_G, n_CG."""
+def ventanas(seq: np.ndarray, inicio: int, fin: int, params: dict,
+             limites: list[list[int]]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Inicios globales y registros de las ventanas que empiezan en [inicio, fin), y los bytes del tramo."""
     w, s = params["ventana"], params["paso"]
     total = seq.shape[0]
     fin_datos = min(fin + w - 1, total)
     raw = np.asarray(seq[inicio:fin_datos])
-
     inicios, registros = [], []
     for idx, ri, rf in tramos_de_registro(inicio, fin_datos, limites, total):
         # El registro puede empezar antes de inicio: se usa su inicio real
@@ -78,11 +77,44 @@ def caracteristicas(seq: np.ndarray, inicio: int, fin: int, params: dict,
         inicios.append(v)
         registros.append(np.full(v.shape[0], idx, dtype=np.int64))
     v = np.concatenate(inicios) if inicios else np.zeros(0, dtype=np.int64)
+    regs = np.concatenate(registros) if registros else np.zeros(0, dtype=np.int64)
+    return v, regs, raw
+
+
+def caracteristicas(seq: np.ndarray, inicio: int, fin: int, params: dict,
+                    limites: list[list[int]], nucleo=None) -> dict:
+    """Calcula por ventana: inicio global, registro, evaluable, n_C, n_G, n_CG."""
+    w = params["ventana"]
+    v, regs, raw = ventanas(seq, inicio, fin, params, limites)
     contar = getattr(nucleo, "contar_ventanas", None) or contar_ventanas
     malo, n_c, n_g, n_cg = contar(raw, v - inicio, w)
-    return {"inicios": v,
-            "registros": np.concatenate(registros) if registros else np.zeros(0, dtype=np.int64),
-            "evaluable": malo == 0, "n_c": n_c, "n_g": n_g, "n_cg": n_cg}
+    return {"inicios": v, "registros": regs, "evaluable": malo == 0, "n_c": n_c, "n_g": n_g, "n_cg": n_cg}
+
+
+def clasificar_con_modelo(seq: np.ndarray, inicio: int, fin: int, params: dict,
+                          limites: list[list[int]], nucleo) -> tuple[dict, np.ndarray, np.ndarray]:
+    """Ruta de la NPU: el modelo clasifica las ventanas evaluables.
+
+    La CPU solo calcula que ventanas son evaluables (una suma acumulada) y los
+    conteos de las positivas, para listarlas. Devuelve (car, positivas, prob).
+    """
+    w = params["ventana"]
+    v, regs, raw = ventanas(seq, inicio, fin, params, limites)
+    loc = v - inicio
+    malo = np.concatenate(([0], np.cumsum(~ES_ACGT[raw])))
+    ev = (malo[loc + w] - malo[loc]) == 0 if v.size else np.zeros(0, dtype=bool)
+    prob = np.zeros(v.shape[0], dtype=np.float64)
+    if ev.any():
+        prob[ev] = nucleo.clasificar(raw, loc[ev], w)
+    positivas = ev & (prob > 0.5)
+    n_c = np.zeros(v.shape[0], dtype=np.int64)
+    n_g = np.zeros_like(n_c)
+    n_cg = np.zeros_like(n_c)
+    if positivas.any():
+        _, c, g, cg = contar_ventanas(raw, loc[positivas], w)
+        n_c[positivas], n_g[positivas], n_cg[positivas] = c, g, cg
+    car = {"inicios": v, "registros": regs, "evaluable": ev, "n_c": n_c, "n_g": n_g, "n_cg": n_cg}
+    return car, positivas, prob
 
 
 def contar_ventanas(raw: np.ndarray, loc: np.ndarray, w: int) -> tuple[np.ndarray, ...]:
@@ -133,9 +165,13 @@ def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
     """Evalua con la regla las ventanas que empiezan en [inicio, fin) (por subtramos)."""
     total = vacio(params)
     for a, b in subtramos(inicio, fin, SUBTRAMO_ZONAS):
-        car = caracteristicas(seq, a, b, params, limites, nucleo)
-        positivas = es_positiva(car["n_c"], car["n_g"], car["n_cg"], params["ventana"])
-        total = combinar(total, armar_parcial(car, positivas, None, params), params)
+        if hasattr(nucleo, "clasificar"):
+            car, positivas, prob = clasificar_con_modelo(seq, a, b, params, limites, nucleo)
+        else:
+            car = caracteristicas(seq, a, b, params, limites, nucleo)
+            positivas = es_positiva(car["n_c"], car["n_g"], car["n_cg"], params["ventana"])
+            prob = None
+        total = combinar(total, armar_parcial(car, positivas, prob, params), params)
     return total
 
 

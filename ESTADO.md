@@ -20,7 +20,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E6 Monitoreo y energía | Hecha (energía real pendiente en hardware) |
 | E7 Dashboard | Hecha |
 | E8 Alta disponibilidad | Hecha |
-| E9 NPU en la Mac | Pendiente |
+| E9 NPU en la Mac | Hecha (Neural Engine pendiente en la Mac) |
 | E10 Despliegue y manual | Pendiente |
 | E11 Opcionales | Pendiente |
 
@@ -105,11 +105,22 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Dashboard: botón "Simular caída del Master" solo si hay respaldo conectado; banner "Master de respaldo activo desde HH:MM:SS"; aviso de que en modo NFS la caída del Master es fatal; si el Master no responde, el navegador indica la URL del respaldo.
 - Pruebas: `tests/test_alta_disponibilidad.py` (principal en un proceso aparte que se mata con SIGKILL a mitad de una corrida; el respaldo se promueve, los workers se reconectan y el resultado es idéntico al esperado, conservando lo hecho antes de la caída; instantánea y restauración; detección del respaldo). 3 de 3 corridas seguidas sin fallos.
 
+### E9. NPU
+
+- `pdn/motores/npu/modelo.py`: red en numpy (one-hot [L,4,W] → convoluciones fijas → f1, f2 → densa 2-8-1), entrenamiento con Adam, cuantización INT8 simétrica, cuenta de operaciones por ventana.
+- `pdn/motores/npu/construir_modelo.py`: entrena, evalúa (frontera sintética y ventanas reales de un `.seq`), exporta `modelos/cpg_w200_fp16.mlpackage` y `modelos/cpg_w200_int8.mlpackage` (4 `constexpr_affine_dequantize`), guarda `cpg_w200.npz` y `metricas.json`. Con `--verificar-coreml` (solo Mac) compara Core ML con numpy y la regla, con `CPU_AND_NE` y `CPU_ONLY`.
+- `pdn/motores/npu/motor_npu.py`: `MotorNPU(backend, precision, lote, unidades)`; Core ML en la Mac, alternativa en CPU en otro sistema; solo zonas.
+- `pdn/motores/npu/verificar_ane.py`: compara la potencia del ANE con `CPU_AND_NE` y con `CPU_ONLY` usando `powermetrics`.
+- Métricas actuales (`metricas.json`, construido en la nube): ventanas reales sintéticas 49 999/50 000 (fp32 e INT8 contra la regla); frontera sintética fp32 99,991 %, INT8 99,983 %; los desacuerdos son empates de obs/esp = 0,6. El paquete pesa unos 10,6 KB en fp16 y 10,9 KB en INT8: con 33 parámetros, los metadatos dominan.
+- Master: la NPU queda excluida de las operaciones que no son zonas; `energia.csv` incluye operaciones estimadas y operaciones por joule.
+- Pruebas: `tests/test_npu.py` (one-hot y extracción exactas, separación de la regla por f1 y f2, modelo guardado, INT8, entrenamiento, construcción del programa Core ML, motor NPU en CPU, worker NPU en el clúster simulado).
+
 ## Pendiente de prueba en hardware
 
 - GPU real en `nodo-vivanco` (RTX 4050) y `nodo-naranjo` (MX450): `PDN_GPU_REAL=1 pytest tests/test_motor_gpu.py` y `python -m herramientas.benchmark_gpu --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq --mb 1024` (rendimiento, solapamiento real con 1 y 2 streams, límite de lote en la MX450 de 2 GB).
 - Energía real: RAPL en los nodos Linux (tras `scripts/setup_nodo.sh`, que da permiso de lectura), NVML en `nodo-vivanco` y `nodo-naranjo`, `powermetrics` en `nodo-hidalgo` (regla de sudoers de `scripts/setup_mac.sh`). Verificar que `energia.csv` tenga valores y que la potencia sea razonable.
 - Caída real del Master (`nodo-vivanco`) con el respaldo en `nodo-carranza`, por red real; medir el tiempo de recuperación.
+- NPU en `nodo-hidalgo`: `python -m pdn.motores.npu.construir_modelo --verificar-coreml --seq ...` (concordancia de Core ML fp16 e INT8 con numpy), `python -m pdn.motores.npu.verificar_ane` (¿corre en el Neural Engine?) y cuantización de activaciones (`linear_quantize_activations`, necesita ejecutar el modelo).
 - Afinidad con núcleos P y E reales en el i5-13420H de `nodo-vivanco` (en la nube no hay CPU híbrida; la lógica se probó con una topología simulada).
 - Benchmark SIMD en cada laptop (`python -m herramientas.benchmark_simd --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq`).
 - MPI multinodo con el hostfile real: `scripts/generar_hostfile.py` y luego `python -m pdn.mpi.escalabilidad --archivo GCF_000001405.40_GRCh38.p14_genomic --repeticiones 3 --calentamiento` (series 3 y 4 solo se pueden correr con las laptops).
