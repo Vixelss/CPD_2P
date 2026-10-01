@@ -61,7 +61,8 @@ def main(argv: list[str] | None = None) -> None:
                a.nfs_datos or os.path.join(config["rutas"]["nfs"], "datos"), a.nombre, opciones,
                a.retardo, a.latido or config["worker"]["latido_s"],
                a.timeout_master or config["worker"]["master_timeout_s"], a.calibracion_mb,
-               monitor=Monitor(dispositivo=a.dispositivo))
+               monitor=Monitor(dispositivo=a.dispositivo),
+               reserva_gpu=int(config["worker"].get("reserva_gpu_nucleos", 1)))
     try:
         w.correr()
     except KeyboardInterrupt:

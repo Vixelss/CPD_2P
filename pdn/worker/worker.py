@@ -62,7 +62,7 @@ class Worker:
                  nfs_datos: str | None = None, nombre: str | None = None,
                  motor_opciones: dict | None = None, retardo_s_mb: float = 0.0,
                  latido_s: float = 1.0, timeout_master: float = 3.0,
-                 calibracion_sintetica_mb: float = 0.0, monitor=None) -> None:
+                 calibracion_sintetica_mb: float = 0.0, monitor=None, reserva_gpu: int = 1) -> None:
         if not masters:
             raise ValueError("Hace falta al menos un Master")
         self.masters = [m if ":" in m else "%s:5555" % m for m in masters]
@@ -72,7 +72,9 @@ class Worker:
         self.wid = "%s:%s" % (self.hostname, dispositivo)
         self.datos = datos or os.path.expanduser("~/pdn-datos")
         self.nfs_datos = nfs_datos or "/cluster/datos"
-        self.motor_opciones = dict(motor_opciones or {})
+        self.motor_base = dict(motor_opciones or {})
+        self.motor_opciones: dict | None = None
+        self.reserva_gpu = reserva_gpu
         self.retardo_s_mb = retardo_s_mb
         self.latido_s = latido_s
         self.timeout_master = timeout_master
@@ -132,8 +134,12 @@ class Worker:
 
     # -- ciclo de vida --------------------------------------------------------
     def preparar_motor(self, opciones: dict | None = None) -> float:
-        """Crea y prepara el motor (fuera del cronometro). Devuelve segundos."""
-        opciones = dict(opciones if opciones is not None else self.motor_opciones)
+        """Crea y prepara el motor (fuera del cronometro). Devuelve segundos.
+
+        Las opciones de la corrida se combinan con las del arranque (que
+        incluyen, por ejemplo, el nucleo reservado para alimentar la GPU).
+        """
+        opciones = {**self.motor_base, **(opciones or {})}
         if self.motor is not None and opciones == self.motor_opciones:
             return 0.0
         if self.motor is not None:
@@ -178,6 +184,12 @@ class Worker:
     def correr(self) -> None:
         """Bucle principal del worker."""
         self.hw = hardware.detectar(completo=True, ip_master=self.master_actual.split(":")[0])
+        gpu = self.hw.get("gpu") or {}
+        if self.dispositivo == "cpu" and gpu.get("disponible") and not gpu.get("simulador") \
+                and "reservar" not in self.motor_base and self.reserva_gpu:
+            # Leccion 5 del P1: un nucleo queda libre para el hilo que alimenta a la GPU
+            self.motor_base["reservar"] = self.reserva_gpu
+            log.info("%s: GPU en el nodo, se reservan %d nucleos para alimentarla", self.wid, self.reserva_gpu)
         self.preparar_motor()
         hilo = threading.Thread(target=self._latidos, name="latidos", daemon=True)
         hilo.start()
@@ -240,7 +252,7 @@ class Worker:
         cfg = r["corrida"]
         t0 = time.perf_counter()
         try:
-            prep_motor = self.preparar_motor(cfg.get("motor") or self.motor_opciones)
+            prep_motor = self.preparar_motor(cfg.get("motor"))
             ruta_a = self._ruta(cfg["nombre_a"], cfg.get("origen_datos", "local"))
             ruta_b = self._ruta(cfg.get("nombre_b"), cfg.get("origen_datos", "local"))
             for ruta, largo in ((ruta_a, cfg.get("largo_a")), (ruta_b, cfg.get("largo_b"))):

@@ -5,6 +5,11 @@ from __future__ import annotations
 import json
 import os
 
+# En la nube no hay GPU: se usa el simulador de CUDA de Numba. En una laptop con
+# NVIDIA, PDN_GPU_REAL=1 pytest -m gpu corre las mismas pruebas sobre la tarjeta.
+if os.environ.get("PDN_GPU_REAL") != "1":
+    os.environ.setdefault("NUMBA_ENABLE_CUDASIM", "1")
+
 import pytest
 
 from herramientas import generar_sintetico
@@ -58,4 +63,20 @@ def par_reordenado(carpeta_datos):
     a = os.path.join(carpeta_datos, "reord_A.fna")
     b = os.path.join(carpeta_datos, "reord_B.fna")
     esperado = generar_sintetico.generar_par_reordenado(a, b, mb=0.5, semilla=13)
+    return preparar(a), preparar(b), esperado
+
+
+@pytest.fixture(scope="session")
+def sintetico_mini(carpeta_datos):
+    """FASTA de unos 40 KB (para el simulador de CUDA, que es lento)."""
+    ruta = os.path.join(carpeta_datos, "sint_mini.fna")
+    generar_sintetico.generar(ruta, mb=0.04, semilla=9)
+    return preparar(ruta), _leer(ruta)
+
+
+@pytest.fixture(scope="session")
+def par_mini(carpeta_datos):
+    a = os.path.join(carpeta_datos, "mini_A.fna")
+    b = os.path.join(carpeta_datos, "mini_B.fna")
+    esperado = generar_sintetico.generar_par(a, b, mb=0.04, semilla=12, reales=40, caso=15, con_n=10)
     return preparar(a), preparar(b), esperado

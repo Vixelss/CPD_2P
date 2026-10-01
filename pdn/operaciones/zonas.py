@@ -63,20 +63,12 @@ def inicios_ventanas(reg_ini: int, reg_fin: int, inicio: int, fin: int, w: int, 
 
 
 def caracteristicas(seq: np.ndarray, inicio: int, fin: int, params: dict,
-                    limites: list[list[int]]) -> dict:
+                    limites: list[list[int]], nucleo=None) -> dict:
     """Calcula por ventana: inicio global, registro, evaluable, n_C, n_G, n_CG."""
     w, s = params["ventana"], params["paso"]
     total = seq.shape[0]
     fin_datos = min(fin + w - 1, total)
     raw = np.asarray(seq[inicio:fin_datos])
-    d = raw & 0xDF
-    malo = (~ES_ACGT[raw]).astype(np.int64)
-    es_c = (d == _C).astype(np.int64)
-    es_g = (d == _G).astype(np.int64)
-    es_cg = np.zeros(d.shape[0], dtype=np.int64)
-    if d.shape[0] > 1:
-        es_cg[:-1] = (d[:-1] == _C) & (d[1:] == _G)
-    acum = [np.concatenate(([0], np.cumsum(x))) for x in (malo, es_c, es_g, es_cg)]
 
     inicios, registros = [], []
     for idx, ri, rf in tramos_de_registro(inicio, fin_datos, limites, total):
@@ -86,16 +78,28 @@ def caracteristicas(seq: np.ndarray, inicio: int, fin: int, params: dict,
         inicios.append(v)
         registros.append(np.full(v.shape[0], idx, dtype=np.int64))
     v = np.concatenate(inicios) if inicios else np.zeros(0, dtype=np.int64)
-    loc = v - inicio
-
-    def suma(a: np.ndarray, desde: np.ndarray, largo: int) -> np.ndarray:
-        return a[desde + largo] - a[desde]
-
+    contar = getattr(nucleo, "contar_ventanas", None) or contar_ventanas
+    malo, n_c, n_g, n_cg = contar(raw, v - inicio, w)
     return {"inicios": v,
             "registros": np.concatenate(registros) if registros else np.zeros(0, dtype=np.int64),
-            "evaluable": suma(acum[0], loc, w) == 0,
-            "n_c": suma(acum[1], loc, w), "n_g": suma(acum[2], loc, w),
-            "n_cg": suma(acum[3], loc, w - 1)}
+            "evaluable": malo == 0, "n_c": n_c, "n_g": n_g, "n_cg": n_cg}
+
+
+def contar_ventanas(raw: np.ndarray, loc: np.ndarray, w: int) -> tuple[np.ndarray, ...]:
+    """Por ventana [loc, loc + w): bytes que no son ACGT, n_C, n_G y n_CG (sumas acumuladas)."""
+    d = raw & 0xDF
+    malo = (~ES_ACGT[raw]).astype(np.int64)
+    es_c = (d == _C).astype(np.int64)
+    es_g = (d == _G).astype(np.int64)
+    es_cg = np.zeros(d.shape[0], dtype=np.int64)
+    if d.shape[0] > 1:
+        es_cg[:-1] = (d[:-1] == _C) & (d[1:] == _G)
+    acum = [np.concatenate(([0], np.cumsum(x))) for x in (malo, es_c, es_g, es_cg)]
+
+    def suma(a: np.ndarray, largo: int) -> np.ndarray:
+        return a[loc + largo] - a[loc]
+
+    return suma(acum[0], w), suma(acum[1], w), suma(acum[2], w), suma(acum[3], w - 1)
 
 
 def _inicio_registro(limites: list[list[int]], idx: int) -> int:
@@ -129,7 +133,7 @@ def procesar(seq: np.ndarray, inicio: int, fin: int, params: dict,
     """Evalua con la regla las ventanas que empiezan en [inicio, fin) (por subtramos)."""
     total = vacio(params)
     for a, b in subtramos(inicio, fin, SUBTRAMO_ZONAS):
-        car = caracteristicas(seq, a, b, params, limites)
+        car = caracteristicas(seq, a, b, params, limites, nucleo)
         positivas = es_positiva(car["n_c"], car["n_g"], car["n_cg"], params["ventana"])
         total = combinar(total, armar_parcial(car, positivas, None, params), params)
     return total

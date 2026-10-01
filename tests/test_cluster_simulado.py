@@ -161,8 +161,11 @@ def test_tolerancia_sigkill(sintetico):
 
 def test_integridad_copia_danada(sintetico):
     prep, esp = sintetico
-    # El worker 1 tiene el .seq con un byte cambiado en la posicion 300000
-    with ClusterSimulado([prep], retardos=[0.5, 0.0, 0.5], corruptos={1: 300_000}) as c:
+    # El worker 1 tiene el .seq con un byte cambiado en una de cada dos unidades:
+    # asi recibe seguro alguna unidad danada (con un solo byte, a veces la
+    # unidad danada la procesaba otro worker y no habia nada que rechazar)
+    danados = list(range(5_000, prep.largo, 2 * TAM))
+    with ClusterSimulado([prep], retardos=[0.5, 0.0, 0.5], corruptos={1: danados}) as c:
         r = c.correr(_cfg("conteo", prep))
         _verificar(r, esp, "conteo")
         rechazos = [x for x in r["reasignaciones"] if "rechazada" in x["motivo"]]

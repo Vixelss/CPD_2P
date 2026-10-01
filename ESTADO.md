@@ -16,7 +16,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E2 Motor CPU y núcleo SIMD | Hecha |
 | E3 Master, workers y clúster simulado | Hecha |
 | E4 Modo MPI y escalabilidad | Hecha |
-| E5 Motor GPU CUDA | Pendiente |
+| E5 Motor GPU CUDA | Hecha (lógica; rendimiento pendiente en hardware) |
 | E6 Monitoreo y energía | Pendiente |
 | E7 Dashboard | Pendiente |
 | E8 Alta disponibilidad | Pendiente |
@@ -69,8 +69,18 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - En la nube (OpenMPI 4.1.6 instalado con apt, `mpi4py` con pip, 4 núcleos, 64 MiB sintéticos, mediana de 3 con calentamiento): conteo T₁ = 0,36 s, speedup 1,89 con 2 y 3,42 con 4 (s de Amdahl = 0,057); patrones 3,48 con 4; zonas 3,52 con 4 (s = 0,043).
 - Pruebas: `tests/test_mpi.py` (reparto, ajuste de Amdahl, referencia + validación del Master, `mpirun -np 1/2/4` local igual a la referencia en conteo, patrones y zonas, comparación con SIMD, reparto proporcional, serie de escalabilidad con CSV y PNG, comando del lanzador).
 
+### E5. Motor GPU CUDA
+
+- `pdn/motores/gpu_cuda.py`: kernels Numba `k_histograma` (memoria compartida + atómicos), `k_comparar` (categorías), `k_buscar` (grid-stride, posiciones con atómicos), `k_ventanas` (zonas); `MotorGPU(hilos_bloque, bloques, lote_mb, streams, vram_libre_mb)` con `preparar()` (reserva buffers pinned y de dispositivo, valida el lote contra la VRAM, `precalentar()` compila todos los kernels), conteo con dos streams y medición de `t_transferencia`, `t_kernel` y `solapamiento_pct`; `NucleoGPU` para las demás operaciones.
+- `pdn/operaciones/zonas.py`: el conteo por ventanas (`contar_ventanas`) ahora es parte del núcleo intercambiable.
+- Worker: `--dispositivo gpu --motor '{"lote_mb": 64, "streams": 2}'`; el worker de CPU de un nodo con GPU reserva un núcleo.
+- `herramientas/benchmark_gpu.py`: 1 contra 2 streams y tamaños de lote, a `resultados/benchmark_gpu.csv`.
+- Pruebas (`tests/test_motor_gpu.py`, con `NUMBA_ENABLE_CUDASIM=1`): equivalencia exacta con la referencia de las cuatro operaciones, núcleo GPU contra numpy, 1 y 2 streams, validaciones de rango (lote contra VRAM de la MX450), worker GPU repartiendo con uno de CPU en el clúster simulado.
+- Se corrigió una prueba de integridad de E3 que fallaba de forma intermitente: con un solo byte dañado, a veces la unidad la procesaba otro worker. Ahora se dañan varias unidades.
+
 ## Pendiente de prueba en hardware
 
+- GPU real en `nodo-vivanco` (RTX 4050) y `nodo-naranjo` (MX450): `PDN_GPU_REAL=1 pytest tests/test_motor_gpu.py` y `python -m herramientas.benchmark_gpu --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq --mb 1024` (rendimiento, solapamiento real con 1 y 2 streams, límite de lote en la MX450 de 2 GB).
 - Afinidad con núcleos P y E reales en el i5-13420H de `nodo-vivanco` (en la nube no hay CPU híbrida; la lógica se probó con una topología simulada).
 - Benchmark SIMD en cada laptop (`python -m herramientas.benchmark_simd --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq`).
 - MPI multinodo con el hostfile real: `scripts/generar_hostfile.py` y luego `python -m pdn.mpi.escalabilidad --archivo GCF_000001405.40_GRCh38.p14_genomic --repeticiones 3 --calentamiento` (series 3 y 4 solo se pueden correr con las laptops).

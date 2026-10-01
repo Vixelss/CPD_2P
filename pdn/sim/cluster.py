@@ -45,7 +45,7 @@ class ClusterSimulado:
 
     def __init__(self, archivos: list[Preparado], retardos: list[float] | None = None,
                  carpeta: str | None = None, config: dict | None = None, procesos: int = 1,
-                 impl: str = "numpy", corruptos: dict[int, int] | None = None,
+                 impl: str = "numpy", corruptos: dict[int, int | list[int]] | None = None,
                  puerto: int | None = None, iniciar_master: bool = True,
                  masters_extra: list[str] | None = None) -> None:
         self.archivos = archivos
@@ -73,13 +73,15 @@ class ClusterSimulado:
                 if os.path.lexists(destino):
                     os.remove(destino)
                 if ext == ".seq" and k in self.corruptos:
-                    # Copia con un byte cambiado (las huellas siguen siendo las buenas)
+                    # Copia con bytes cambiados (las huellas siguen siendo las buenas)
                     shutil.copy(raiz + ext, destino)
+                    posiciones = self.corruptos[k]
                     with open(destino, "r+b") as f:
-                        f.seek(self.corruptos[k])
-                        b = f.read(1)
-                        f.seek(self.corruptos[k])
-                        f.write(bytes([b[0] ^ 0x01]))
+                        for pos in (posiciones if isinstance(posiciones, list) else [posiciones]):
+                            f.seek(pos)
+                            b = f.read(1)
+                            f.seek(pos)
+                            f.write(bytes([b[0] ^ 0x01]))
                 else:
                     os.symlink(raiz + ext, destino)
         return d
