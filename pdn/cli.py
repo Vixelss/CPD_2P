@@ -140,6 +140,10 @@ def cmd_master(a) -> None:
     config = cfgmod.cargar(a.config)
     configurar("pdn.master", a.log)
     m = Master(config, a.puerto, a.datos, a.resultados).iniciar()
+    if a.replicar_a:
+        from pdn.master.respaldo import Replicador  # noqa: PLC0415
+        Replicador(m, a.replicar_a, float(config["master"]["respaldo_snapshot_s"]),
+                   float(config["master"]["respaldo_timeout_s"])).iniciar()
     if a.dashboard:
         from pdn.dashboard.app import servir  # noqa: PLC0415
         servir(m, puerto=a.puerto_dashboard or config["red"]["puerto_dashboard"], bloquear=False)
@@ -155,6 +159,26 @@ def cmd_master(a) -> None:
         pass
     finally:
         m.detener()
+
+
+def cmd_respaldo(a) -> None:
+    from pdn.master.respaldo import MasterRespaldo  # noqa: PLC0415
+
+    config = cfgmod.cargar(a.config)
+    configurar("pdn.respaldo", a.log)
+
+    def al_promover(m):
+        if a.dashboard:
+            from pdn.dashboard.app import servir  # noqa: PLC0415
+            servir(m, puerto=a.puerto_dashboard or config["red"]["puerto_dashboard"], bloquear=False)
+
+    r = MasterRespaldo(config, a.puerto, a.puerto_replica, a.datos or config["rutas"]["datos"], a.resultados,
+                       al_promover=al_promover).iniciar()
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        r.detener()
 
 
 def cmd_sim(a) -> None:
@@ -249,9 +273,21 @@ def main(argv: list[str] | None = None) -> None:
     sp.add_argument("--dashboard", action="store_true")
     sp.add_argument("--puerto-dashboard", type=int)
     sp.add_argument("--esperar-workers", type=int, default=1)
+    sp.add_argument("--replicar-a", help="IP[:puerto] del Master de respaldo (alta disponibilidad)")
     sp.add_argument("--timeout-workers", type=float, default=120)
     _args_corrida(sp)
     sp.set_defaults(func=cmd_master)
+
+    sp = sub.add_parser("respaldo", help="Master de respaldo: recibe instantaneas y se promueve si el principal cae")
+    sp.add_argument("--config")
+    sp.add_argument("--puerto", type=int, help="puerto de tareas que abre al promoverse")
+    sp.add_argument("--puerto-replica", type=int, help="puerto donde recibe las instantaneas")
+    sp.add_argument("--datos")
+    sp.add_argument("--resultados")
+    sp.add_argument("--log")
+    sp.add_argument("--dashboard", action="store_true", help="servir el dashboard al promoverse")
+    sp.add_argument("--puerto-dashboard", type=int)
+    sp.set_defaults(func=cmd_respaldo)
 
     sp = sub.add_parser("sim", help="corre una operacion en el cluster simulado local")
     sp.add_argument("--workers", type=int, default=4)

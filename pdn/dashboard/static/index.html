@@ -71,6 +71,7 @@
       <label>Origen de los datos
         <select name="origen_datos"><option value="local">Copia local en cada nodo</option>
           <option value="nfs">NFS (/cluster/datos)</option></select></label>
+      <p class="error oculto" id="aviso-nfs">En modo NFS los workers leen del disco del Master: si el Master cae, la corrida se pierde aunque haya respaldo.</p>
     </div>
     <div class="panel ancho2">
       <h2>Nodos y dispositivos</h2>

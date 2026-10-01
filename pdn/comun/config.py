@@ -23,7 +23,7 @@ DEFECTOS: dict[str, Any] = {
     "nodos": [],
     "master": {"respaldo_snapshot_s": 1.0, "respaldo_timeout_s": 3.0, "latido_timeout_s": 5.0,
                "tarea_vencida_min_s": 10.0, "tarea_vencida_factor": 3.0,
-               "preparacion_timeout_s": 300.0, "rechazos_maximos": 2},
+               "preparacion_timeout_s": 300.0, "rechazos_maximos": 2, "gracia_promocion_s": 30.0},
     "planificador": {"estrategia": "adaptativa", "tiempo_objetivo_s": 0.5, "max_tarea_mb": 128,
                      "max_tarea_gpu_mb": 512, "tam_fijo_mb": 16, "alfa_velocidad": 0.3},
     "worker": {"latido_s": 1.0, "calibracion_mb": 64, "master_timeout_s": 3.0,

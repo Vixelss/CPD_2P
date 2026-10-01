@@ -131,6 +131,7 @@ class Master:
         self.t_arranque = time.time()
         self.activo_desde = time.time()
         self.ganchos_estado: list = []  # funciones llamadas con cada instantanea (HA, monitoreo)
+        self.gracia_hasta = 0.0  # tras una promocion, plazo para que los workers se reconecten
         self.monitoreo: dict[str, list[dict]] = {}
 
     # ------------------------------------------------------------------
@@ -650,9 +651,10 @@ class Master:
             self._quizas_arrancar(c)
 
     def _quizas_arrancar(self, c: Corrida, forzar: bool = False) -> None:
+        # Un participante que aun no se registro en este Master (tras una promocion) no cuenta
         pendientes = [wid for wid in c.participantes
-                      if self.workers[wid].corrida_lista != c.corrida_id
-                      and self.workers[wid].estado != "perdido" and not self.workers[wid].excluido]
+                      if (w := self.workers.get(wid)) is not None and w.corrida_lista != c.corrida_id
+                      and w.estado != "perdido" and not w.excluido]
         listos = self._activos(c)
         minimo = int(c.config.get("min_workers", 1))
         if (not pendientes or forzar) and len(listos) >= minimo:
@@ -788,9 +790,9 @@ class Master:
                 if ahora - (t.t_asignacion or ahora) > limite:
                     self._devolver(c, t, "vencida (%.1f s sin resultado)" % (ahora - t.t_asignacion))
             if not self._activos(c) and not c.en_vuelo() and not c.planificador.terminado():
-                pend = [wid for wid in c.participantes if self.workers[wid].estado != "perdido"
-                        and not self.workers[wid].excluido]
-                if not pend:
+                pend = [wid for wid in c.participantes if (w := self.workers.get(wid)) is not None
+                        and w.estado != "perdido" and not w.excluido]
+                if not pend and ahora > self.gracia_hasta:
                     c.error = "no quedan workers activos"
                     self._cerrar_corrida(FALLIDA)
 

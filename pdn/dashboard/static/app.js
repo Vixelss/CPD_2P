@@ -224,6 +224,8 @@ function validarCampo(inp) {
 }
 document.addEventListener("input", ev => { if (ev.target.matches("input")) validarCampo(ev.target); });
 $('#form-corrida [name="operacion"]').addEventListener("change", () => est.estado && pintarConfiguracion(est.estado));
+$('#form-corrida [name="origen_datos"]').addEventListener("change", ev =>
+  $("#aviso-nfs").classList.toggle("oculto", ev.target.value !== "nfs"));
 
 function leerConfig() {
   const f = $("#form-corrida"); const v = n => f.elements[n].value;

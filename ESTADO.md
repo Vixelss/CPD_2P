@@ -19,7 +19,7 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 | E5 Motor GPU CUDA | Hecha (lógica; rendimiento pendiente en hardware) |
 | E6 Monitoreo y energía | Hecha (energía real pendiente en hardware) |
 | E7 Dashboard | Hecha |
-| E8 Alta disponibilidad | Pendiente |
+| E8 Alta disponibilidad | Hecha |
 | E9 NPU en la Mac | Pendiente |
 | E10 Despliegue y manual | Pendiente |
 | E11 Opcionales | Pendiente |
@@ -97,10 +97,19 @@ Traspaso entre sesiones de Claude Code. Debe bastar para retomar sin leer el his
 - Uso: `python -m pdn.cli master --dashboard` en el clúster, o `python -m pdn.cli sim --workers 4 --retardos 0,0.5,1,2 --mb 6 --dashboard` para la demo.
 - Pruebas: `tests/test_dashboard.py` (página y estáticos sin CDN, estado con rangos, corrida completa por API con exportación, errores 400 con mensaje claro, MPI y escalabilidad desde la API, evidencias, registro, WebSocket).
 
+### E8. Alta disponibilidad
+
+- `pdn/master/respaldo.py`: `instantanea`/`restaurar`, `Replicador` (principal → respaldo cada 1 s con acuses), `MasterRespaldo` (escucha en 5556, prepara corridas en segundo plano, se promueve tras 3 s sin instantáneas, abre el puerto de tareas, devuelve lo asignado a la fila y continúa).
+- Master: `hay_respaldo()`, `simular_caida()` (`os._exit(1)`), plazo de gracia tras la promoción, participantes no registrados tolerados.
+- CLI: `python -m pdn.cli master --replicar-a IP_RESPALDO [--dashboard]` en `nodo-vivanco` y `python -m pdn.cli respaldo --dashboard` en `nodo-carranza`. Los workers se lanzan con `--master IP_PRINCIPAL --respaldo IP_RESPALDO`.
+- Dashboard: botón "Simular caída del Master" solo si hay respaldo conectado; banner "Master de respaldo activo desde HH:MM:SS"; aviso de que en modo NFS la caída del Master es fatal; si el Master no responde, el navegador indica la URL del respaldo.
+- Pruebas: `tests/test_alta_disponibilidad.py` (principal en un proceso aparte que se mata con SIGKILL a mitad de una corrida; el respaldo se promueve, los workers se reconectan y el resultado es idéntico al esperado, conservando lo hecho antes de la caída; instantánea y restauración; detección del respaldo). 3 de 3 corridas seguidas sin fallos.
+
 ## Pendiente de prueba en hardware
 
 - GPU real en `nodo-vivanco` (RTX 4050) y `nodo-naranjo` (MX450): `PDN_GPU_REAL=1 pytest tests/test_motor_gpu.py` y `python -m herramientas.benchmark_gpu --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq --mb 1024` (rendimiento, solapamiento real con 1 y 2 streams, límite de lote en la MX450 de 2 GB).
 - Energía real: RAPL en los nodos Linux (tras `scripts/setup_nodo.sh`, que da permiso de lectura), NVML en `nodo-vivanco` y `nodo-naranjo`, `powermetrics` en `nodo-hidalgo` (regla de sudoers de `scripts/setup_mac.sh`). Verificar que `energia.csv` tenga valores y que la potencia sea razonable.
+- Caída real del Master (`nodo-vivanco`) con el respaldo en `nodo-carranza`, por red real; medir el tiempo de recuperación.
 - Afinidad con núcleos P y E reales en el i5-13420H de `nodo-vivanco` (en la nube no hay CPU híbrida; la lógica se probó con una topología simulada).
 - Benchmark SIMD en cada laptop (`python -m herramientas.benchmark_simd --seq ~/pdn-datos/GCF_000001405.40_GRCh38.p14_genomic.seq`).
 - MPI multinodo con el hostfile real: `scripts/generar_hostfile.py` y luego `python -m pdn.mpi.escalabilidad --archivo GCF_000001405.40_GRCh38.p14_genomic --repeticiones 3 --calentamiento` (series 3 y 4 solo se pueden correr con las laptops).
