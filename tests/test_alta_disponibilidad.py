@@ -24,7 +24,8 @@ def _esperar(condicion, timeout, paso=0.1):
     raise TimeoutError("la condicion no se cumplio en %s s" % timeout)
 
 
-def test_caida_del_master_principal(tmp_path, sintetico):
+def _caida_del_principal(tmp_path, sintetico, carpeta_respaldo: str):
+    """Corre una corrida, mata al principal a mitad y devuelve (respaldo, resumen, hechas_antes, esp)."""
     prep, esp = sintetico
     nombre = os.path.basename(prep.ruta_seq)[:-4]
     datos = os.path.dirname(prep.ruta_seq)
@@ -33,7 +34,7 @@ def test_caida_del_master_principal(tmp_path, sintetico):
     ruta_cfg.write_text(yaml.safe_dump(config))
     p_principal, p_respaldo, p_replica = puerto_libre(), puerto_libre(), puerto_libre()
 
-    respaldo = MasterRespaldo(config, p_respaldo, p_replica, datos, str(tmp_path / "res_respaldo"),
+    respaldo = MasterRespaldo(config, p_respaldo, p_replica, datos, carpeta_respaldo,
                               host="127.0.0.1", carpeta_referencias=str(tmp_path / "refs")).iniciar()
     principal = subprocess.Popen(
         [sys.executable, "-m", "pdn.cli", "master", "--config", str(ruta_cfg), "--puerto", str(p_principal),
@@ -64,6 +65,11 @@ def test_caida_del_master_principal(tmp_path, sintetico):
         if principal.poll() is None:
             principal.kill()
         respaldo.detener()
+    return respaldo, resumen, hechas_antes, esp
+
+
+def test_caida_del_master_principal(tmp_path, sintetico):
+    respaldo, resumen, hechas_antes, esp = _caida_del_principal(tmp_path, sintetico, str(tmp_path / "res_respaldo"))
     assert resumen["rol_master"] == "respaldo"
     assert resumen["validacion"]["valido"] and resumen["validacion"]["cobertura"]["ok"]
     assert resumen["resultado"]["hist"] == esp["conteo"]["hist"]
@@ -72,6 +78,57 @@ def test_caida_del_master_principal(tmp_path, sintetico):
     # Las tareas hechas antes de la caida se conservaron (no se rehizo todo)
     assert hechas_antes >= 3
     assert len({p["worker"] for p in resumen["por_worker"] if p["tareas"]}) >= 2
+    assert resumen["carpeta"].startswith(str(tmp_path / "res_respaldo"))
+
+
+def test_caida_real_con_nfs_colgado(tmp_path, sintetico, monkeypatch):
+    """El principal se desconecta de verdad: /cluster (su NFS) deja de responder.
+
+    Se simula un montaje hard sin servidor: cualquier acceso a la carpeta
+    compartida se bloquea. El respaldo debe terminar la corrida igual y guardar
+    los resultados en ~/pdn-resultados de su nodo.
+    """
+    import builtins
+    import threading
+
+    colgada = str(tmp_path / "nfs_caido")
+    nunca = threading.Event()
+    reales = {"makedirs": os.makedirs, "access": os.access, "open": builtins.open}
+
+    def _bloquea(ruta) -> bool:
+        return str(ruta).startswith(colgada)
+
+    def makedirs(ruta, *a, **k):
+        if _bloquea(ruta):
+            nunca.wait(600)
+        return reales["makedirs"](ruta, *a, **k)
+
+    def access(ruta, *a, **k):
+        if _bloquea(ruta):
+            nunca.wait(600)
+        return reales["access"](ruta, *a, **k)
+
+    def abrir(ruta, *a, **k):
+        if isinstance(ruta, (str, os.PathLike)) and _bloquea(ruta):
+            nunca.wait(600)
+        return reales["open"](ruta, *a, **k)
+
+    monkeypatch.setenv("HOME", str(tmp_path / "home_respaldo"))
+    monkeypatch.setattr(os, "makedirs", makedirs)
+    monkeypatch.setattr(os, "access", access)
+    monkeypatch.setattr(builtins, "open", abrir)
+    try:
+        respaldo, resumen, _, esp = _caida_del_principal(tmp_path, sintetico, colgada + "/resultados")
+    finally:
+        nunca.set()
+    assert resumen["rol_master"] == "respaldo"
+    assert resumen["validacion"]["valido"]
+    assert resumen["resultado"]["hist"] == esp["conteo"]["hist"]
+    local = str(tmp_path / "home_respaldo" / "pdn-resultados")
+    assert resumen["carpeta"].startswith(local)
+    assert os.path.exists(os.path.join(resumen["carpeta"], "resumen.json"))
+    avisos = [e["texto"] for e in respaldo.master.eventos if e["tipo"] == "aviso"]
+    assert any("no responde" in t for t in avisos), avisos
 
 
 def test_instantanea_y_restauracion_en_proceso(sintetico):

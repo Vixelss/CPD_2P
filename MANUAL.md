@@ -177,7 +177,7 @@ bash scripts/lanzar_cluster.sh
 
 Arranca por SSH un worker por cada dispositivo de cada nodo (`cpu`, `gpu`, `npu`, según `cluster.yaml`), el Master de respaldo en `nodo-carranza` y el Master con el dashboard en este nodo. Los logs quedan en `~/pdn-logs/` de cada nodo.
 
-Abrir el dashboard: **http://192.168.1.10:8000** (o la IP del Master). En la pestaña Topología deben aparecer todos los workers en verde. Si el Master cae y el respaldo toma el control, el dashboard pasa a **http://192.168.1.11:8000**.
+Abrir el dashboard: **http://192.168.1.10:8000** (o la IP del Master). En la pestaña Topología deben aparecer todos los workers en verde. Si el Master cae y el respaldo toma el control, el dashboard pasa a **http://192.168.1.11:8000**. Ese dashboard **solo existe después de la promoción** (unos 3 s tras la caída): hay que abrirlo o recargarlo en otra laptop después de la caída. Si el principal se desconectó de verdad, `/cluster` (que sirve el Master) deja de responder y el respaldo guarda los resultados en `~/pdn-resultados` de su propio nodo; el dashboard lo avisa.
 
 Para lanzar a mano (por ejemplo, solo un worker):
 
@@ -211,7 +211,7 @@ Orden sugerido (A = `GCF_000001405.40_GRCh38.p14_genomic`, B = `GCA_000001405.29
 | 7 | Balanceo | Dashboard: la misma corrida con estrategia adaptativa y con fija; comparar tiempos y el ocioso final en Resultados |
 | 8 | Escalabilidad y Amdahl | `python scripts/generar_hostfile.py` y luego `python -m pdn.mpi.escalabilidad --archivo A --repeticiones 3 --calentamiento --url-master http://192.168.1.10:8000` |
 | 9 | Tolerancia a fallos | Durante una corrida larga: Ejecución → elegir un worker → "caída", y otro → "congelado". El resultado final debe ser válido y la línea de tiempo muestra las tareas reasignadas |
-| 10 | Alta disponibilidad | Durante una corrida: "Simular caída del Master". Abrir http://192.168.1.11:8000: el banner dice "Master de respaldo activo desde HH:MM:SS" y la corrida termina válida |
+| 10 | Alta disponibilidad | Durante una corrida: "Simular caída del Master" (o desconectar de verdad la red del Master). Después de la caída, abrir en otra laptop http://192.168.1.11:8000: el banner dice "Master de respaldo activo desde HH:MM:SS" y la corrida termina válida. Con desconexión real, los resultados quedan en `~/pdn-resultados` del respaldo |
 | 11 | NFS contra local | La misma corrida con "Origen de los datos" en NFS y en copia local |
 | 12 | Estabilidad bajo carga | Una corrida de 5 minutos o más con todos los nodos (por ejemplo, patrones con 10 patrones sobre A, o varias repeticiones seguidas) |
 | 13 | Energía | Pestaña Recursos durante las corridas; `energia.csv` y "Energía por arquitectura" en Resultados |

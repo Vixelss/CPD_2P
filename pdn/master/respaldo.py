@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import os
 import queue
 import threading
 import time
@@ -33,6 +34,41 @@ from pdn.master.estado import ASIGNADA, EJECUTANDO, PREPARANDO, Corrida, Tarea
 log = logging.getLogger("pdn.respaldo")
 INSTANTANEA = "INSTANTANEA"
 ACUSE = "ACUSE"
+
+
+def accesible(ruta: str, timeout: float = 2.0) -> bool:
+    """True si la carpeta responde a tiempo y se puede escribir.
+
+    Con el Master caido de verdad (desconectado de la red), /cluster es un NFS
+    sin servidor: con montaje hard cualquier acceso se bloquea para siempre, asi
+    que se prueba en un hilo aparte y se abandona si no contesta.
+    """
+    res: list[bool] = []
+
+    def probar() -> None:
+        try:
+            os.makedirs(ruta, exist_ok=True)
+            res.append(os.access(ruta, os.W_OK))
+        except OSError:
+            res.append(False)
+
+    h = threading.Thread(target=probar, daemon=True, name="probar-carpeta")
+    h.start()
+    h.join(timeout)
+    return bool(res and res[0])
+
+
+def carpetas_tras_promocion(config: dict, resultados: str | None,
+                            referencias: str | None) -> tuple[str, str | None, bool]:
+    """Carpetas del respaldo promovido: las compartidas si responden; si no, ~/pdn-resultados.
+
+    Devuelve (resultados, referencias, local). Sin carpeta explicita el Master
+    usaria /cluster/resultados, que es justo la que puede estar colgada.
+    """
+    destino = resultados or os.path.join(config["rutas"]["nfs"], "resultados")
+    if accesible(destino):
+        return destino, referencias, False
+    return os.path.join(os.path.expanduser("~"), "pdn-resultados"), None, True
 
 
 # ---------------------------------------------------------------------------
@@ -245,8 +281,14 @@ class MasterRespaldo:
             while c["corrida_id"] not in self.preparadas and c["corrida_id"] in self._preparando \
                     and time.time() < limite:
                 time.sleep(0.05)
-        m = Master(self.config, self.puerto_tareas, self.datos, self.carpeta_resultados, self.host, "respaldo",
-                   self.carpeta_referencias)
+        resultados, referencias, local = carpetas_tras_promocion(self.config, self.carpeta_resultados,
+                                                                 self.carpeta_referencias)
+        if local:
+            log.warning("La carpeta compartida no responde (el Master cayo con el NFS): resultados en %s",
+                        resultados)
+        m = Master(self.config, self.puerto_tareas, self.datos, resultados, self.host, "respaldo",
+                   referencias or os.path.join(os.path.dirname(resultados.rstrip("/")) or ".",
+                                               "referencias_resultados"))
         m.activo_desde = time.time()
         m.gracia_hasta = time.time() + float(self.config["master"].get("gracia_promocion_s", 30.0))
         m.iniciar()
@@ -255,6 +297,9 @@ class MasterRespaldo:
             log.error("La corrida %s no se pudo preparar en el respaldo: no se puede continuar", c["corrida_id"])
         m._llamar("ejecutar", lambda mm: restaurar(mm, self.ultima or {}, preparada))
         m._evento("ha", "Master de respaldo activo desde %s" % time.strftime("%H:%M:%S"))
+        if local:
+            m._evento("aviso", "La carpeta compartida no responde: los resultados se guardan en %s de este nodo"
+                      % resultados)
         self.master = m
         self.promovido.set()
         if self.al_promover is not None:
