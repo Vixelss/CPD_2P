@@ -130,6 +130,8 @@ def detectar_gpu_cuda() -> dict:
                      "vram_mb": None, "cc": None, "sms": None})
         return info
     try:
+        from pdn.motores.gpu_cuda import compat_numpy  # noqa: PLC0415
+        compat_numpy()
         from numba import cuda  # noqa: PLC0415
     except Exception as e:  # numba no instalado o roto
         info["motivo"] = "numba no disponible: %s" % e

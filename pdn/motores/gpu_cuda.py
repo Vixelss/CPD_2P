@@ -40,7 +40,18 @@ def simulador() -> bool:
     return os.environ.get("NUMBA_ENABLE_CUDASIM") == "1"
 
 
+def compat_numpy() -> None:
+    """numba-cuda registra np.row_stack, que numpy 2.4 quito: se le da el alias de siempre.
+
+    Sin esto, el primer kernel falla con "module 'numpy' has no attribute 'row_stack'".
+    Con un numpy que aun lo tiene, no hace nada.
+    """
+    if not hasattr(np, "row_stack"):
+        np.row_stack = np.vstack
+
+
 def _cuda():
+    compat_numpy()
     try:
         from numba import cuda  # noqa: PLC0415
     except Exception as e:
